@@ -1,0 +1,10 @@
+# Orca Link 美术素材声明
+
+以下文件来自社区皮肤项目 [dsh-deep-whale / orca-link](https://github.com/Small-tailqwq/dsh-deep-whale/tree/main/orca-link)。
+
+- 代码：MIT
+- 美术：CC BY-NC-SA 4.0（非商业使用）
+
+角色形象原作者：上善。
+
+仅供 Workbench 个人非商业界面使用。如需商用请自行取得授权。

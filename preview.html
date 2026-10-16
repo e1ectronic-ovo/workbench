@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Workbench preview</title>
+<style>
+/* ===== Inlined design tokens ===== */
+:root {
+  --bg: #0a0a0f; --bg-elevated: #111118; --surface: rgba(20,20,28,0.72);
+  --surface-solid: #14141c; --surface-hover: rgba(255,255,255,0.04);
+  --surface-active: rgba(255,255,255,0.08);
+  --border: rgba(255,255,255,0.06); --border-strong: rgba(255,255,255,0.12);
+  --border-focus: rgba(99,102,241,0.6);
+  --text: #f4f4f5; --text-secondary: #a1a1aa; --text-muted: #71717a;
+  --accent: #6366f1; --accent-hover: #818cf8; --accent-soft: rgba(99,102,241,0.16);
+  --success: #10b981; --warning: #f59e0b; --destructive: #ef4444;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-full: 9999px;
+  --font-sans: "Inter", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+  --text-xs: 11px; --text-sm: 12px; --text-base: 13px; --text-md: 14px; --text-lg: 16px; --text-2xl: 24px;
+  --blur: 12px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1); --dur: 200ms;
+  --sidebar-w: 60px; --titlebar-h: 36px; --statusbar-h: 28px;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden;
+  background: var(--bg); color: var(--text); font-family: var(--font-sans);
+  font-size: var(--text-base); -webkit-font-smoothing: antialiased; user-select: none; }
+button { background: transparent; border: 0; cursor: pointer; padding: 0;
+  font: inherit; color: inherit; }
+svg { display: block; }
+
+/* ===== Titlebar ===== */
+.workbench { display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; }
+.titlebar { height: var(--titlebar-h); background: rgba(10,10,15,0.6); backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur)); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 var(--space-3) 0 var(--space-3); padding-right: 140px; }
+.drag-region { flex: 1; height: 100%; display: flex; align-items: center; padding-left: var(--space-3); }
+.brand { display: flex; align-items: center; gap: var(--space-2); }
+.brand-mark { display: flex; align-items: center; gap: 3px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-secondary); }
+.dot.d1 { background: var(--accent); } .dot.d2 { background: var(--success); } .dot.d3 { background: var(--warning); }
+.brand-name { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); letter-spacing: 0.3px; }
+
+/* ===== Body ===== */
+.body { flex: 1; display: flex; min-height: 0; }
+
+/* ===== Sidebar ===== */
+.rail { width: var(--sidebar-w); background: var(--surface); backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur)); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center;
+  padding: var(--space-3) 0; gap: var(--space-3); position: relative; z-index: 5; }
+.rail-top, .rail-bottom { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
+.rail-nav { flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-2); padding: var(--space-2) 0; width: 100%; }
+.rail-btn { width: 40px; height: 40px; border-radius: var(--radius-md);
+  display: inline-flex; align-items: center; justify-content: center; color: var(--text-secondary);
+  position: relative; transition: background var(--dur) var(--ease), color var(--dur) var(--ease); }
+.rail-btn:hover { background: var(--surface-hover); color: var(--text); }
+.rail-btn.module { font-size: var(--text-md); font-weight: 600; letter-spacing: -0.5px; }
+.rail-btn.module.active { background: var(--accent); color: #ffffff;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 40%, transparent); }
+.rail-btn.module.active::before { content: ''; position: absolute; left: -10px; top: 50%;
+  transform: translateY(-50%); width: 3px; height: 18px; border-radius: 0 2px 2px 0; background: var(--accent); }
+.glyph { line-height: 1; }
+
+/* ===== Workspace ===== */
+.workspace { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); position: relative; }
+.workspace-bar { height: 44px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--space-4); background: rgba(10,10,15,0.5); backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur)); border-bottom: 1px solid var(--border); }
+.left { display: flex; align-items: center; gap: var(--space-3); min-width: 0; flex: 1; }
+.right { display: flex; align-items: center; gap: var(--space-1); }
+.module-badge { --accent: var(--accent); display: inline-flex; align-items: center;
+  gap: var(--space-2); padding: 4px 10px; border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text);
+  font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
+.module-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 8px var(--accent); }
+.page-title { color: var(--text-secondary); font-size: var(--text-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.icon-btn { width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--text-secondary);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease); }
+.icon-btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.icon-btn:disabled { color: var(--text-muted); cursor: default; }
+
+/* ===== Status bar ===== */
+.statusbar { height: var(--statusbar-h); display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--space-3); background: rgba(10,10,15,0.7); backdrop-filter: blur(var(--blur));
+  -webkit-backdrop-filter: blur(var(--blur)); border-top: 1px solid var(--border);
+  font-size: var(--text-xs); color: var(--text-muted); }
+.statusbar .left, .statusbar .right { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.statusbar .label { color: var(--text-secondary); }
+.statusbar .url { font-family: var(--font-mono); font-size: 11px; }
+
+/* ===== Mock webview area ===== */
+.mock-web { flex: 1; display: flex; align-items: center; justify-content: center;
+  background: repeating-linear-gradient(45deg, #fafafa, #fafafa 20px, #f5f5f5 20px, #f5f5f5 40px); }
+.mock-web-inner { text-align: center; padding: 40px; }
+.mock-web h2 { margin: 0 0 8px; color: #18181b; font-size: 24px; font-family: var(--font-sans); }
+.mock-web p { margin: 0; color: #71717a; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="workbench" id="app">
+  <header class="titlebar">
+    <div class="drag-region">
+      <div class="brand">
+        <div class="brand-mark">
+          <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span>
+        </div>
+        <span class="brand-name">Workbench</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="rail">
+      <div class="rail-top">
+        <button class="rail-btn logo">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 12 3l9 9"/><path d="M5 10v10h14V10"/></svg>
+        </button>
+      </div>
+      <nav class="rail-nav">
+        <button class="rail-btn module active" style="--accent:#FE2C55"><span class="glyph">小</span></button>
+        <button class="rail-btn module" style="--accent:#FB7299"><span class="glyph">B</span></button>
+        <button class="rail-btn module" style="--accent:#E6162D"><span class="glyph">微</span></button>
+        <button class="rail-btn module" style="--accent:#FF0050"><span class="glyph">抖</span></button>
+        <button class="rail-btn module" style="--accent:#0084FF"><span class="glyph">知</span></button>
+        <button class="rail-btn module" style="--accent:#8B5CF6"><span class="glyph">G</span></button>
+      </nav>
+      <div class="rail-bottom">
+        <button class="rail-btn">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="workspace-bar">
+        <div class="left">
+          <div class="module-badge" style="--accent:#FE2C55">
+            <span class="dot"></span><span class="name">小红书</span>
+          </div>
+          <span class="page-title">发现 · 你感兴趣的世界</span>
+        </div>
+        <div class="right">
+          <button class="icon-btn" disabled>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+          </button>
+          <button class="icon-btn" disabled>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+          <button class="icon-btn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+          </button>
+          <button class="icon-btn">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="mock-web">
+        <div class="mock-web-inner">
+          <h2>小红书</h2>
+          <p>这里是 webview 区域。真实运行时会显示 xiaohongshu.com</p>
+          <p style="margin-top: 16px; font-size: 12px">预览页用对比色块代替真实网页内容</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="statusbar">
+    <div class="left">
+      <span class="dot" style="background: var(--success); box-shadow: 0 0 6px var(--success)"></span>
+      <span class="label">小红书</span>
+    </div>
+    <div class="right">
+      <span class="url">https://www.xiaohongshu.com</span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

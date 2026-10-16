@@ -1,0 +1,58 @@
+{
+  "name": "workbench",
+  "version": "0.1.0",
+  "description": "Personal workbench - desktop browser shell",
+  "private": true,
+  "main": "out/main/index.js",
+  "author": "Workbench",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "icons": "node scripts/generate-icons.mjs",
+    "whale-assets": "node scripts/optimize-whale-assets.mjs",
+    "maid-assets": "node scripts/fetch-maid-atelier-assets.mjs"
+  },
+  "build": {
+    "appId": "com.workbench.app",
+    "productName": "Workbench",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": ".",
+        "filter": [
+          "icon.svg",
+          "icon.png",
+          "icon.ico"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    }
+  },
+  "dependencies": {
+    "pinia": "^2.2.6",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "electron": "^33.2.1",
+    "electron-vite": "^2.3.0",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.5",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

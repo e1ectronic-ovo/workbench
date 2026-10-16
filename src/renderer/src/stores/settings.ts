@@ -1,0 +1,514 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+
+export type ThemeId =
+  | 'oled'
+  | 'slate'
+  | 'dim'
+  | 'light'
+  | 'paper'
+  | 'whale'
+  | 'whale-night'
+  | 'orca'
+  | 'orca-night'
+  | 'custom'
+
+export type SceneThemeId = 'whale' | 'whale-night' | 'orca' | 'orca-night'
+
+export function isSceneTheme(id: ThemeId): id is SceneThemeId {
+  return id === 'whale' || id === 'whale-night' || id === 'orca' || id === 'orca-night'
+}
+export type DensityId = 'comfortable' | 'compact'
+
+export interface CustomThemeColors {
+  bg: string
+  surface: string
+  sidebarBg: string
+  text: string
+}
+
+export interface AppearanceSettings {
+  theme: ThemeId
+  accent: string
+  custom?: CustomThemeColors
+  density: DensityId
+  showStatusBar: boolean
+  showModuleLabels: boolean
+}
+
+export const WHALE_ACCENT = '#C5A468'
+export const ORCA_ACCENT = '#086CFF'
+
+export const DEFAULT_CUSTOM_COLORS: CustomThemeColors = {
+  bg: '#eef4fc',
+  surface: '#ffffff',
+  sidebarBg: '#dce8f5',
+  text: '#1a2b4a'
+}
+
+interface ThemeTokens {
+  bg: string
+  bgElevated: string
+  surface: string
+  surfaceSecondary: string
+  surfaceRaised: string
+  surfaceHover: string
+  surfaceActive: string
+  fillTertiary: string
+  navHover: string
+  navSelected: string
+  navIcon: string
+  sidebarBg: string
+  border: string
+  borderStrong: string
+  text: string
+  textSecondary: string
+  textMuted: string
+  onAccent: string
+  scheme: 'dark' | 'light'
+  chromeBg: string
+  chromeFg: string
+}
+
+const APPEARANCE_KEY = 'workbench.appearance'
+
+const DEFAULT_APPEARANCE: AppearanceSettings = {
+  theme: 'light',
+  accent: '#007AFF',
+  density: 'comfortable',
+  showStatusBar: true,
+  showModuleLabels: true
+}
+
+const THEMES: Record<ThemeId, ThemeTokens> = {
+  oled: {
+    bg: '#1c1c1e',
+    bgElevated: '#2c2c2e',
+    surface: '#2c2c2e',
+    surfaceSecondary: '#252527',
+    surfaceRaised: '#3a3a3c',
+    surfaceHover: 'rgba(255, 255, 255, 0.06)',
+    surfaceActive: 'rgba(255, 255, 255, 0.08)',
+    fillTertiary: 'rgba(118, 118, 128, 0.24)',
+    navHover: 'rgba(255, 255, 255, 0.06)',
+    navSelected: 'rgba(255, 255, 255, 0.1)',
+    navIcon: '#aeaeb2',
+    sidebarBg: '#252527',
+    border: 'rgba(255, 255, 255, 0.06)',
+    borderStrong: 'rgba(255, 255, 255, 0.12)',
+    text: '#f5f5f7',
+    textSecondary: '#aeaeb2',
+    textMuted: '#8e8e93',
+    onAccent: '#04110f',
+    scheme: 'dark',
+    chromeBg: '#1c1c1e',
+    chromeFg: '#aeaeb2'
+  },
+  slate: {
+    bg: '#0f1419',
+    bgElevated: '#151b22',
+    surface: '#1a222c',
+    surfaceSecondary: '#151b22',
+    surfaceRaised: '#222b36',
+    surfaceHover: 'rgba(255, 255, 255, 0.05)',
+    surfaceActive: 'rgba(255, 255, 255, 0.08)',
+    fillTertiary: 'rgba(118, 118, 128, 0.24)',
+    navHover: 'rgba(255, 255, 255, 0.05)',
+    navSelected: 'rgba(255, 255, 255, 0.09)',
+    navIcon: '#9aa8b6',
+    sidebarBg: '#13181e',
+    border: 'rgba(255, 255, 255, 0.06)',
+    borderStrong: 'rgba(255, 255, 255, 0.12)',
+    text: '#e8eef4',
+    textSecondary: '#9aa8b6',
+    textMuted: '#6b7a8a',
+    onAccent: '#04110f',
+    scheme: 'dark',
+    chromeBg: '#151b22',
+    chromeFg: '#9aa8b6'
+  },
+  dim: {
+    bg: '#121212',
+    bgElevated: '#1a1a1a',
+    surface: '#222222',
+    surfaceSecondary: '#1a1a1a',
+    surfaceRaised: '#2a2a2a',
+    surfaceHover: 'rgba(255, 255, 255, 0.06)',
+    surfaceActive: 'rgba(255, 255, 255, 0.08)',
+    fillTertiary: 'rgba(118, 118, 128, 0.24)',
+    navHover: 'rgba(255, 255, 255, 0.06)',
+    navSelected: 'rgba(255, 255, 255, 0.1)',
+    navIcon: '#a3a3a3',
+    sidebarBg: '#181818',
+    border: 'rgba(255, 255, 255, 0.06)',
+    borderStrong: 'rgba(255, 255, 255, 0.12)',
+    text: '#f0f0f0',
+    textSecondary: '#a3a3a3',
+    textMuted: '#737373',
+    onAccent: '#04110f',
+    scheme: 'dark',
+    chromeBg: '#1a1a1a',
+    chromeFg: '#a3a3a3'
+  },
+  light: {
+    bg: '#F5F5F7',
+    bgElevated: '#F5F5F7',
+    surface: '#FFFFFF',
+    surfaceSecondary: '#F8F8FA',
+    surfaceRaised: '#FFFFFF',
+    surfaceHover: 'rgba(0, 0, 0, 0.04)',
+    surfaceActive: 'rgba(0, 0, 0, 0.06)',
+    fillTertiary: 'rgba(118, 118, 128, 0.12)',
+    navHover: 'rgba(0, 0, 0, 0.04)',
+    navSelected: 'rgba(0, 0, 0, 0.06)',
+    navIcon: '#6E6E73',
+    sidebarBg: '#ECECEF',
+    border: 'rgba(0, 0, 0, 0.06)',
+    borderStrong: 'rgba(0, 0, 0, 0.1)',
+    text: '#1D1D1F',
+    textSecondary: '#6E6E73',
+    textMuted: '#86868B',
+    onAccent: '#FFFFFF',
+    scheme: 'light',
+    chromeBg: '#F5F5F7',
+    chromeFg: '#6E6E73'
+  },
+  whale: {
+    bg: '#0a1220',
+    bgElevated: 'rgba(12, 22, 42, 0.82)',
+    surface: 'rgba(16, 28, 52, 0.78)',
+    surfaceSecondary: 'rgba(10, 18, 36, 0.72)',
+    surfaceRaised: 'rgba(20, 32, 58, 0.88)',
+    surfaceHover: 'rgba(197, 164, 104, 0.1)',
+    surfaceActive: 'rgba(197, 164, 104, 0.16)',
+    fillTertiary: 'rgba(197, 164, 104, 0.12)',
+    navHover: 'rgba(197, 164, 104, 0.08)',
+    navSelected: 'rgba(197, 164, 104, 0.18)',
+    navIcon: '#c5a468',
+    sidebarBg: 'rgba(10, 18, 36, 0.38)',
+    border: 'rgba(197, 164, 104, 0.2)',
+    borderStrong: 'rgba(197, 164, 104, 0.34)',
+    text: '#f0ebe0',
+    textSecondary: '#b8c4d8',
+    textMuted: '#7a8aa8',
+    onAccent: '#1a1208',
+    scheme: 'dark',
+    chromeBg: 'rgba(10, 18, 36, 0.88)',
+    chromeFg: '#b8c4d8'
+  },
+  'whale-night': {
+    bg: '#060a14',
+    bgElevated: 'rgba(8, 14, 28, 0.88)',
+    surface: 'rgba(12, 20, 38, 0.82)',
+    surfaceSecondary: 'rgba(6, 10, 20, 0.78)',
+    surfaceRaised: 'rgba(14, 24, 44, 0.92)',
+    surfaceHover: 'rgba(197, 164, 104, 0.1)',
+    surfaceActive: 'rgba(197, 164, 104, 0.16)',
+    fillTertiary: 'rgba(197, 164, 104, 0.14)',
+    navHover: 'rgba(197, 164, 104, 0.08)',
+    navSelected: 'rgba(197, 164, 104, 0.2)',
+    navIcon: '#d4b87a',
+    sidebarBg: 'rgba(6, 10, 20, 0.42)',
+    border: 'rgba(197, 164, 104, 0.18)',
+    borderStrong: 'rgba(197, 164, 104, 0.3)',
+    text: '#ece6d8',
+    textSecondary: '#a8b4c8',
+    textMuted: '#6a7894',
+    onAccent: '#1a1208',
+    scheme: 'dark',
+    chromeBg: 'rgba(6, 10, 20, 0.9)',
+    chromeFg: '#a8b4c8'
+  },
+  orca: {
+    bg: '#eef3fa',
+    bgElevated: 'rgba(245, 248, 252, 0.82)',
+    surface: 'rgba(255, 255, 255, 0.78)',
+    surfaceSecondary: 'rgba(232, 238, 246, 0.72)',
+    surfaceRaised: 'rgba(255, 255, 255, 0.86)',
+    surfaceHover: 'rgba(8, 108, 255, 0.08)',
+    surfaceActive: 'rgba(8, 108, 255, 0.14)',
+    fillTertiary: 'rgba(8, 108, 255, 0.1)',
+    navHover: 'rgba(8, 108, 255, 0.08)',
+    navSelected: 'rgba(8, 108, 255, 0.16)',
+    navIcon: '#086cff',
+    sidebarBg: 'rgba(245, 248, 252, 0.42)',
+    border: 'rgba(8, 108, 255, 0.16)',
+    borderStrong: 'rgba(8, 108, 255, 0.28)',
+    text: '#1a2433',
+    textSecondary: '#4a5a70',
+    textMuted: '#7a8798',
+    onAccent: '#ffffff',
+    scheme: 'light',
+    chromeBg: 'rgba(245, 248, 252, 0.78)',
+    chromeFg: '#4a5a70'
+  },
+  'orca-night': {
+    bg: '#12161e',
+    bgElevated: 'rgba(22, 28, 38, 0.86)',
+    surface: 'rgba(28, 34, 46, 0.8)',
+    surfaceSecondary: 'rgba(16, 20, 28, 0.76)',
+    surfaceRaised: 'rgba(32, 38, 50, 0.88)',
+    surfaceHover: 'rgba(8, 108, 255, 0.1)',
+    surfaceActive: 'rgba(8, 108, 255, 0.16)',
+    fillTertiary: 'rgba(8, 108, 255, 0.14)',
+    navHover: 'rgba(8, 108, 255, 0.1)',
+    navSelected: 'rgba(8, 108, 255, 0.2)',
+    navIcon: '#6aa4ff',
+    sidebarBg: 'rgba(16, 20, 28, 0.42)',
+    border: 'rgba(8, 108, 255, 0.18)',
+    borderStrong: 'rgba(8, 108, 255, 0.3)',
+    text: '#e8eef8',
+    textSecondary: '#9aa8bc',
+    textMuted: '#6e7c90',
+    onAccent: '#ffffff',
+    scheme: 'dark',
+    chromeBg: 'rgba(16, 20, 28, 0.82)',
+    chromeFg: '#9aa8bc'
+  },
+  custom: {
+    bg: '#eef4fc',
+    bgElevated: '#eef4fc',
+    surface: '#ffffff',
+    surfaceSecondary: '#dce8f5',
+    surfaceRaised: '#ffffff',
+    surfaceHover: 'rgba(0, 0, 0, 0.04)',
+    surfaceActive: 'rgba(0, 0, 0, 0.06)',
+    fillTertiary: 'rgba(118, 118, 128, 0.12)',
+    navHover: 'rgba(0, 0, 0, 0.04)',
+    navSelected: 'rgba(0, 0, 0, 0.06)',
+    navIcon: '#6E6E73',
+    sidebarBg: '#dce8f5',
+    border: 'rgba(0, 0, 0, 0.06)',
+    borderStrong: 'rgba(0, 0, 0, 0.1)',
+    text: '#1a2b4a',
+    textSecondary: '#4a6080',
+    textMuted: '#6b82a6',
+    onAccent: '#ffffff',
+    scheme: 'light',
+    chromeBg: '#eef4fc',
+    chromeFg: '#4a6080'
+  },
+  paper: {
+    bg: '#f7f3eb',
+    bgElevated: '#fffcf7',
+    surface: '#fffcf7',
+    surfaceSecondary: '#f3ede3',
+    surfaceRaised: '#fffcf7',
+    surfaceHover: 'rgba(60, 45, 25, 0.05)',
+    surfaceActive: 'rgba(60, 45, 25, 0.08)',
+    fillTertiary: 'rgba(118, 118, 128, 0.12)',
+    navHover: 'rgba(60, 45, 25, 0.05)',
+    navSelected: 'rgba(60, 45, 25, 0.08)',
+    navIcon: '#8a8073',
+    sidebarBg: '#ebe5da',
+    border: 'rgba(60, 45, 25, 0.08)',
+    borderStrong: 'rgba(60, 45, 25, 0.14)',
+    text: '#1c1710',
+    textSecondary: '#5c5348',
+    textMuted: '#8a8073',
+    onAccent: '#ffffff',
+    scheme: 'light',
+    chromeBg: '#fffcf7',
+    chromeFg: '#5c5348'
+  }
+}
+
+function parseHexColor(hex: string): [number, number, number] | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function luminance(hex: string): number {
+  const rgb = parseHexColor(hex)
+  if (!rgb) return 0.5
+  const [r, g, b] = rgb.map((v) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function buildCustomTokens(c: CustomThemeColors): ThemeTokens {
+  const dark = luminance(c.bg) < 0.45
+  const hover = dark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)'
+  const active = dark ? 'rgba(255, 255, 255, 0.09)' : 'rgba(0, 0, 0, 0.06)'
+  const border = dark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
+  const borderStrong = dark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.1)'
+  const secondary = dark ? 'rgba(232, 238, 248, 0.72)' : 'rgba(26, 43, 74, 0.68)'
+  const muted = dark ? 'rgba(157, 176, 208, 0.72)' : 'rgba(26, 43, 74, 0.48)'
+  return {
+    bg: c.bg,
+    bgElevated: c.bg,
+    surface: c.surface,
+    surfaceSecondary: c.sidebarBg,
+    surfaceRaised: c.surface,
+    surfaceHover: hover,
+    surfaceActive: active,
+    fillTertiary: dark ? 'rgba(118, 118, 128, 0.24)' : 'rgba(118, 118, 128, 0.12)',
+    navHover: hover,
+    navSelected: active,
+    navIcon: muted,
+    sidebarBg: c.sidebarBg,
+    border,
+    borderStrong,
+    text: c.text,
+    textSecondary: secondary,
+    textMuted: muted,
+    onAccent: dark ? '#ffffff' : '#ffffff',
+    scheme: dark ? 'dark' : 'light',
+    chromeBg: c.bg,
+    chromeFg: secondary
+  }
+}
+
+function resolveThemeTokens(a: AppearanceSettings): ThemeTokens {
+  if (a.theme === 'custom' && a.custom) return buildCustomTokens(a.custom)
+  return THEMES[a.theme] ?? THEMES.light
+}
+
+function loadAppearance(): AppearanceSettings {
+  try {
+    const raw = localStorage.getItem(APPEARANCE_KEY)
+    if (!raw) return { ...DEFAULT_APPEARANCE }
+    const data = JSON.parse(raw) as Partial<AppearanceSettings>
+    const merged = { ...DEFAULT_APPEARANCE, ...data }
+    if (!THEMES[merged.theme]) merged.theme = DEFAULT_APPEARANCE.theme
+    if (merged.theme === 'custom' && !merged.custom) {
+      merged.custom = { ...DEFAULT_CUSTOM_COLORS }
+    }
+    return merged
+  } catch {
+    return { ...DEFAULT_APPEARANCE }
+  }
+}
+
+function applyAppearance(a: AppearanceSettings) {
+  const root = document.documentElement
+  const t = resolveThemeTokens(a)
+  root.style.setProperty('--bg', t.bg)
+  root.style.setProperty('--bg-elevated', t.bgElevated)
+  root.style.setProperty('--surface', t.surface)
+  root.style.setProperty('--surface-secondary', t.surfaceSecondary)
+  root.style.setProperty('--surface-raised', t.surfaceRaised)
+  root.style.setProperty('--surface-hover', t.surfaceHover)
+  root.style.setProperty('--surface-active', t.surfaceActive)
+  root.style.setProperty('--fill-tertiary', t.fillTertiary)
+  root.style.setProperty('--nav-hover', t.navHover)
+  root.style.setProperty('--nav-selected', t.navSelected)
+  root.style.setProperty('--nav-icon', t.navIcon)
+  root.style.setProperty('--sidebar-bg', t.sidebarBg)
+  root.style.setProperty('--border', t.border)
+  root.style.setProperty('--border-strong', t.borderStrong)
+  root.style.setProperty('--text', t.text)
+  root.style.setProperty('--text-secondary', t.textSecondary)
+  root.style.setProperty('--text-muted', t.textMuted)
+  root.style.setProperty('--accent', a.accent)
+  root.style.setProperty('--accent-hover', a.accent)
+  root.style.setProperty('--accent-soft', `${a.accent}29`)
+  root.style.setProperty('--border-focus', `${a.accent}a6`)
+  root.style.setProperty('--on-accent', t.onAccent)
+  const compact = a.density === 'compact'
+  root.style.setProperty('--sidebar-w', compact ? '72px' : '232px')
+  root.dataset.sidebarLabels = compact || !a.showModuleLabels ? 'false' : 'true'
+  root.style.colorScheme = t.scheme
+  root.dataset.theme = a.theme
+  root.dataset.density = a.density
+  root.dataset.scheme = t.scheme
+
+  void window.workbench?.setChromeTheme?.({
+    color: t.chromeBg,
+    symbolColor: t.chromeFg,
+    backgroundColor: t.bg
+  })
+}
+
+export const useSettingsStore = defineStore('settings', () => {
+  const appearance = ref<AppearanceSettings>(loadAppearance())
+  const openAtLogin = ref(false)
+  const openAsHidden = ref(false)
+  const loginReady = ref(false)
+
+  function persistAppearance() {
+    try {
+      localStorage.setItem(APPEARANCE_KEY, JSON.stringify(appearance.value))
+    } catch {
+      /* ignore */
+    }
+    applyAppearance(appearance.value)
+  }
+
+  function patchAppearance(patch: Partial<AppearanceSettings>) {
+    const next: AppearanceSettings = { ...appearance.value, ...patch }
+    if (patch.custom) {
+      next.custom = { ...(appearance.value.custom ?? DEFAULT_CUSTOM_COLORS), ...patch.custom }
+    }
+    if (next.theme === 'custom' && !next.custom) {
+      next.custom = { ...DEFAULT_CUSTOM_COLORS }
+    }
+    appearance.value = next
+    persistAppearance()
+  }
+
+  function patchCustomColor(key: keyof CustomThemeColors, value: string) {
+    patchAppearance({
+      theme: 'custom',
+      custom: { ...(appearance.value.custom ?? DEFAULT_CUSTOM_COLORS), [key]: value }
+    })
+  }
+
+  function resetAppearance() {
+    appearance.value = { ...DEFAULT_APPEARANCE }
+    persistAppearance()
+  }
+
+  async function refreshLoginItem() {
+    try {
+      const s = await window.workbench.getOpenAtLogin()
+      openAtLogin.value = s.openAtLogin
+      openAsHidden.value = s.openAsHidden
+      loginReady.value = true
+    } catch {
+      loginReady.value = false
+    }
+  }
+
+  async function setOpenAtLogin(value: boolean) {
+    try {
+      const s = await window.workbench.setOpenAtLogin(value, openAsHidden.value)
+      openAtLogin.value = s.openAtLogin
+      openAsHidden.value = s.openAsHidden
+      if (value && !s.openAtLogin) loginReady.value = false
+    } catch {
+      loginReady.value = false
+    }
+  }
+
+  async function setOpenAsHidden(value: boolean) {
+    try {
+      const s = await window.workbench.setOpenAtLogin(openAtLogin.value, value)
+      openAtLogin.value = s.openAtLogin
+      openAsHidden.value = s.openAsHidden
+    } catch {
+      loginReady.value = false
+    }
+  }
+
+  applyAppearance(appearance.value)
+
+  return {
+    appearance,
+    openAtLogin,
+    openAsHidden,
+    loginReady,
+    patchAppearance,
+    patchCustomColor,
+    resetAppearance,
+    refreshLoginItem,
+    setOpenAtLogin,
+    setOpenAsHidden
+  }
+})
+
+export { DEFAULT_APPEARANCE, THEMES }

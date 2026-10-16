@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="Workbench">
+  <title>Workbench</title>
+  <defs>
+    <!-- Atmospheric base — muted slate, not candy blue -->
+    <linearGradient id="bg-base" x1="512" y1="64" x2="512" y2="992" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8FA3BE"/>
+      <stop offset=".42" stop-color="#5E7390"/>
+      <stop offset="1" stop-color="#2F3D4F"/>
+    </linearGradient>
+    <radialGradient id="bg-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(380 280) rotate(90) scale(460)">
+      <stop stop-color="#D4DEEA" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#D4DEEA" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="bg-vignette" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(780 860) rotate(90) scale(560)">
+      <stop stop-color="#1A2330" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#1A2330" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D9E1EC"/>
+    </linearGradient>
+    <linearGradient id="tile-dim" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#FFFFFF" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#C5CED9" stop-opacity=".55"/>
+    </linearGradient>
+    <linearGradient id="tile-accent" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#5AC8FA"/>
+      <stop offset="1" stop-color="#0071E3"/>
+    </linearGradient>
+    <filter id="grid-shadow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="32" flood-color="#152030" flood-opacity=".35"/>
+    </filter>
+    <filter id="tile-inset" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="b"/>
+      <feOffset dy="2"/>
+      <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="inner"/>
+      <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .12 0"/>
+      <feComposite in="SourceGraphic" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- macOS squircle -->
+  <rect width="1024" height="1024" rx="229" fill="url(#bg-base)"/>
+  <rect width="1024" height="1024" rx="229" fill="url(#bg-glow)"/>
+  <rect width="1024" height="1024" rx="229" fill="url(#bg-vignette)"/>
+  <rect x="24" y="24" width="976" height="976" rx="210" stroke="#FFFFFF" stroke-opacity=".08" stroke-width="2"/>
+
+  <!-- Brand mark: modular 2×2 grid = workbench slots -->
+  <g transform="translate(512 530)" filter="url(#grid-shadow)">
+    <g transform="translate(-201 -201)">
+      <!-- TL: primary module -->
+      <rect width="192" height="192" rx="44" fill="url(#tile)" stroke="#FFFFFF" stroke-opacity=".65" stroke-width="3"/>
+      <rect x="36" y="44" width="72" height="10" rx="5" fill="#B8C4D4" fill-opacity=".85"/>
+      <rect x="36" y="68" width="120" height="8" rx="4" fill="#C8D2E0" fill-opacity=".7"/>
+      <rect x="36" y="88" width="104" height="8" rx="4" fill="#C8D2E0" fill-opacity=".55"/>
+
+      <!-- TR: idle module -->
+      <rect x="210" width="192" height="192" rx="44" fill="url(#tile-dim)" stroke="#FFFFFF" stroke-opacity=".35" stroke-width="3"/>
+
+      <!-- BL: idle module -->
+      <rect y="210" width="192" height="192" rx="44" fill="url(#tile-dim)" stroke="#FFFFFF" stroke-opacity=".4" stroke-width="3"/>
+
+      <!-- BR: active accent module -->
+      <rect x="210" y="210" width="192" height="192" rx="44" fill="url(#tile-accent)" stroke="#FFFFFF" stroke-opacity=".5" stroke-width="3"/>
+      <ellipse cx="262" cy="262" rx="48" ry="32" fill="#FFFFFF" fill-opacity=".18"/>
+      <rect x="246" y="278" width="48" height="48" rx="14" fill="#FFFFFF" fill-opacity=".92"/>
+      <rect x="258" y="290" width="24" height="24" rx="7" fill="#0071E3" fill-opacity=".25"/>
+    </g>
+  </g>
+</svg>
