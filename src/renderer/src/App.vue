@@ -21,7 +21,7 @@
         <TitleBar v-if="view === 'settings'" title="设置" />
 
         <div class="content-area" :class="{ 'is-home': view === 'home' }">
-          <EmptyState v-show="view === 'home'" />
+          <HomeDashboard v-show="view === 'home'" />
           <Transition name="fade-view" mode="out-in">
             <div v-if="view === 'module' && store.active" key="module" class="content-fill">
               <div class="workspaces">
@@ -47,7 +47,7 @@ import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import Workspace from './components/Workspace.vue'
 import StatusBar from './components/StatusBar.vue'
-import EmptyState from './components/EmptyState.vue'
+import HomeDashboard from './components/HomeDashboard.vue'
 import Settings from './components/Settings.vue'
 import WindowControls from './components/WindowControls.vue'
 import WhaleThemeDecor from './components/WhaleThemeDecor.vue'

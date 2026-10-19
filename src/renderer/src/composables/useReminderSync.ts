@@ -17,7 +17,8 @@ export function useReminderSync() {
       attendance.reminder.enabled,
       attendance.today,
       attendance.reminder.firedDateKey,
-      attendance.todayRecord?.clockIn
+      attendance.todayRecord?.clockIn,
+      attendance.workHours
     ],
     () => {
       void sync()

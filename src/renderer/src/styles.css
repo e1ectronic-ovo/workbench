@@ -90,7 +90,7 @@
 .workbench-home .home-panel {
   width: 100%;
   flex-shrink: 0;
-  padding: 10px 12px;
+  padding: 10px calc(var(--home-handle-size, 28px) + var(--home-handle-gap, 8px) + 10px) 10px 12px;
   border-radius: var(--radius-list);
   background: var(--home-panel-bg) !important;
   backdrop-filter: blur(12px) saturate(1.05);

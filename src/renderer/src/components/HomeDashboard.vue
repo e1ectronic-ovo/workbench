@@ -20,6 +20,9 @@
       >
         <div
           class="home-widget__handle"
+          role="button"
+          tabindex="0"
+          aria-label="拖动调整位置"
           title="拖动调整位置"
           @pointerdown="startDrag($event, config.id)"
         >
@@ -61,6 +64,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import HomeContextMenu from './HomeContextMenu.vue'
+import { findFreeSlot } from '../lib/home-grid'
 import {
   useHomeWidgetsStore,
   type HomeWidgetConfig,
@@ -159,6 +163,28 @@ function cellFromPoint(clientX: number, clientY: number, colSpan: number, rowSpa
   }
 }
 
+function snapPreview(
+  id: HomeWidgetId,
+  col: number,
+  row: number,
+  colSpan: number,
+  rowSpan: number
+) {
+  const current = homeWidgets.allWidgets.find((w) => w.id === id)
+  if (!current) return { col, row, colSpan, rowSpan }
+
+  const others = homeWidgets.enabledWidgets
+    .filter((w) => w.config.id !== id)
+    .map((w) => w.config)
+  const slot = findFreeSlot(
+    { ...current, colSpan, rowSpan, enabled: true },
+    others,
+    homeWidgets.layout.columns,
+    { col, row }
+  )
+  return { col: slot.col, row: slot.row, colSpan, rowSpan }
+}
+
 function startDrag(e: PointerEvent, id: HomeWidgetId) {
   if (isInteractiveTarget(e.target)) return
   const widget = homeWidgets.enabledWidgets.find((w) => w.config.id === id)
@@ -170,12 +196,13 @@ function startDrag(e: PointerEvent, id: HomeWidgetId) {
 
   draggingId.value = id
   activePointerId = e.pointerId
-  dragPreview.value = {
-    col: widget.config.col,
-    row: widget.config.row,
-    colSpan: widget.config.colSpan,
-    rowSpan: widget.config.rowSpan
-  }
+  dragPreview.value = snapPreview(
+    id,
+    widget.config.col,
+    widget.config.row,
+    widget.config.colSpan,
+    widget.config.rowSpan
+  )
 
   const handle = e.currentTarget as HTMLElement
   handle.setPointerCapture(e.pointerId)
@@ -196,7 +223,15 @@ function onDragMove(e: PointerEvent) {
     widget.config.colSpan,
     widget.config.rowSpan
   )
-  if (cell) dragPreview.value = cell
+  if (cell) {
+    dragPreview.value = snapPreview(
+      widget.config.id,
+      cell.col,
+      cell.row,
+      cell.colSpan,
+      cell.rowSpan
+    )
+  }
 }
 
 function onDragEnd(e: PointerEvent) {
@@ -253,6 +288,8 @@ onBeforeUnmount(() => {
 }
 
 .home-widget {
+  --home-handle-size: 28px;
+  --home-handle-gap: 8px;
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -266,11 +303,11 @@ onBeforeUnmount(() => {
 
 .home-widget__handle {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: var(--home-handle-gap);
+  right: var(--home-handle-gap);
   z-index: 2;
-  width: 22px;
-  height: 22px;
+  width: var(--home-handle-size);
+  height: var(--home-handle-size);
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
@@ -279,12 +316,13 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--surface-raised) 55%, transparent);
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   cursor: grab;
-  opacity: 0;
+  opacity: 0.55;
   transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
 .home-widget:hover .home-widget__handle,
-.home-widget.is-dragging .home-widget__handle {
+.home-widget.is-dragging .home-widget__handle,
+.home-widget__handle:focus-visible {
   opacity: 1;
 }
 

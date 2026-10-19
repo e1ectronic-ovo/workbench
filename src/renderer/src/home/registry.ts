@@ -1,8 +1,9 @@
 import type { Component } from 'vue'
 import HomeAttendance from '../components/HomeAttendance.vue'
+import HomeNotes from '../components/HomeNotes.vue'
 import HomeWeather from '../components/HomeWeather.vue'
 
-export type HomeWidgetId = 'attendance' | 'weather'
+export type HomeWidgetId = 'attendance' | 'weather' | 'notes'
 
 export interface HomeWidgetGridDef {
   col: number
@@ -24,11 +25,11 @@ export interface HomeWidgetDef {
 export const HOME_WIDGET_DEFS: HomeWidgetDef[] = [
   {
     id: 'attendance',
-    name: '今日打卡',
-    description: '记录上班时间，自动推算下班时间',
+    name: '下班倒计时',
+    description: '记录上班时间，实时显示距离下班还有多久',
     defaultEnabled: true,
     component: HomeAttendance,
-    grid: { col: 1, row: 1, colSpan: 2, rowSpan: 1 }
+    grid: { col: 1, row: 1, colSpan: 2, rowSpan: 2 }
   },
   {
     id: 'weather',
@@ -36,7 +37,15 @@ export const HOME_WIDGET_DEFS: HomeWidgetDef[] = [
     description: '显示当地天气与三日预报',
     defaultEnabled: true,
     component: HomeWeather,
-    grid: { col: 1, row: 2, colSpan: 2, rowSpan: 1 }
+    grid: { col: 3, row: 1, colSpan: 2, rowSpan: 2 }
+  },
+  {
+    id: 'notes',
+    name: '便签',
+    description: '本地几条备忘，关掉网页也还在',
+    defaultEnabled: true,
+    component: HomeNotes,
+    grid: { col: 1, row: 3, colSpan: 4, rowSpan: 2 }
   }
 ]
 

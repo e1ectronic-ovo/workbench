@@ -1,32 +1,31 @@
 <template>
-  <div class="home-panel">
+  <div class="home-panel countdown">
     <div class="panel-head">
-      <span class="panel-title">今日打卡</span>
+      <span class="panel-title">下班倒计时</span>
       <span class="panel-date">{{ todayLabel }}</span>
     </div>
 
-    <div class="panel-grid">
-      <label class="time-field">
-        <span class="time-field__label">上班时间</span>
-        <div class="time-field__row">
-          <input
-            v-model="timeInput"
-            class="time-input"
-            type="time"
-            step="60"
-            @change="onTimeChange"
-          />
-          <button type="button" class="mac-btn mac-btn--ghost now-btn" @click="fillNow">
-            现在
-          </button>
-        </div>
-      </label>
-
-      <div class="time-block">
-        <span class="time-label">下班</span>
-        <span class="time-value accent">{{ clockOutLabel }}</span>
-        <span class="time-hint">+{{ WORK_HOURS }}h</span>
+    <template v-if="hasClockIn">
+      <div class="countdown-hero" :class="countdownPhase">
+        <span class="countdown-hero__value">{{ countdownDisplay }}</span>
+        <span class="countdown-hero__hint">{{ countdownHint }}</span>
       </div>
+
+      <div class="countdown-progress" aria-hidden="true">
+        <div class="countdown-progress__bar" :style="{ width: `${progressPercent}%` }" />
+      </div>
+
+      <div class="countdown-meta">
+        <span>上班 {{ clockInLabel }}</span>
+        <span>下班 {{ clockOutLabel }}</span>
+      </div>
+    </template>
+
+    <div v-else class="countdown-empty">
+      <p class="countdown-empty__text">今天还没记录上班</p>
+      <button type="button" class="mac-btn mac-btn--primary clock-in-btn" @click="clockInNow">
+        现在上班
+      </button>
     </div>
 
     <div class="panel-foot">
@@ -38,30 +37,117 @@
         />
         <span>下班提醒</span>
       </label>
-      <button
-        v-if="attendance.todayRecord"
-        type="button"
-        class="link-btn"
-        @click="onClear"
-      >
-        清除
-      </button>
+      <div class="panel-actions">
+        <button type="button" class="link-btn" @click="openHistory">历史</button>
+        <button type="button" class="link-btn" @click="openEdit">编辑</button>
+      </div>
     </div>
   </div>
+
+  <Teleport to="body">
+    <div v-if="editOpen" class="mac-sheet-backdrop attendance-sheet-backdrop">
+      <form class="mac-sheet" @submit.prevent="saveEdit">
+        <h2 class="mac-sheet__title">{{ hasClockIn ? '编辑今日记录' : '新增今日记录' }}</h2>
+
+        <label class="mac-field">
+          <span>上班时间</span>
+          <div class="time-field__row">
+            <input
+              v-model="editTime"
+              class="time-input"
+              type="time"
+              step="60"
+              required
+            />
+            <button type="button" class="mac-btn mac-btn--ghost now-btn" @click="fillEditNow">
+              现在
+            </button>
+          </div>
+        </label>
+
+        <label class="mac-field">
+          <span>每日工时（小时）</span>
+          <input
+            class="work-hours-input"
+            :value="editWorkHours"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            maxlength="2"
+            placeholder="9"
+            required
+            @input="onWorkHoursInput"
+            @keydown="onWorkHoursKeydown"
+            @paste="onWorkHoursPaste"
+            @blur="normalizeWorkHoursInput"
+          />
+        </label>
+
+        <p v-if="editError" class="sheet-warn">{{ editError }}</p>
+
+        <div class="sheet-actions">
+          <button
+            v-if="hasClockIn"
+            type="button"
+            class="mac-btn mac-btn--ghost sheet-actions__danger"
+            @click="clearEdit"
+          >
+            清除
+          </button>
+          <div class="sheet-actions__main">
+            <button type="button" class="mac-btn mac-btn--ghost" @click="closeEdit">取消</button>
+            <button type="submit" class="mac-btn mac-btn--primary">保存</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div v-if="historyOpen" class="mac-sheet-backdrop attendance-sheet-backdrop">
+      <div class="mac-sheet history-sheet">
+        <h2 class="mac-sheet__title">打卡历史</h2>
+        <AttendanceHistoryCalendar ref="historyCalendarRef" />
+
+        <div class="sheet-actions sheet-actions--end">
+          <button type="button" class="mac-btn mac-btn--ghost" @click="closeHistory">关闭</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import AttendanceHistoryCalendar from './AttendanceHistoryCalendar.vue'
 import {
-  addWorkHours,
+  DEFAULT_WORK_HOURS,
   formatClockTime,
+  formatCountdown,
   isoToTimeInput,
+  MAX_WORK_HOURS,
+  MIN_WORK_HOURS,
+  parseWorkHoursInput,
+  sanitizeWorkHoursInput,
   useAttendanceStore,
-  WORK_HOURS
+  workProgress
 } from '../stores/attendance'
 
+const WORK_HOURS_NAV_KEYS = new Set([
+  'Backspace',
+  'Delete',
+  'ArrowLeft',
+  'ArrowRight',
+  'Tab',
+  'Home',
+  'End'
+])
+
 const attendance = useAttendanceStore()
-const timeInput = ref('')
+const now = ref(Date.now())
+const editOpen = ref(false)
+const historyOpen = ref(false)
+const editTime = ref('')
+const editWorkHours = ref(String(DEFAULT_WORK_HOURS))
+const editError = ref('')
+const historyCalendarRef = ref<InstanceType<typeof AttendanceHistoryCalendar> | null>(null)
 
 const todayLabel = computed(() => {
   const d = new Date()
@@ -72,62 +158,157 @@ const todayLabel = computed(() => {
   })
 })
 
-const clockOutLabel = computed(() => {
-  const t = timeInput.value
-  if (!t) {
-    if (attendance.clockOutTime) {
-      return formatClockTime(attendance.clockOutTime.toISOString())
-    }
-    return '—'
-  }
-  const parts = t.split(':').map(Number)
-  if (parts.length < 2 || parts.some(Number.isNaN)) return '—'
-  const d = new Date()
-  d.setHours(parts[0], parts[1], 0, 0)
-  return formatClockTime(addWorkHours(d.toISOString(), WORK_HOURS).toISOString())
+const hasClockIn = computed(() => !!attendance.todayRecord)
+
+const clockInLabel = computed(() => {
+  if (!attendance.clockInTime) return '—'
+  return formatClockTime(attendance.clockInTime.toISOString())
 })
 
-function syncFromStore() {
-  timeInput.value = attendance.todayRecord
-    ? isoToTimeInput(attendance.todayRecord.clockIn)
-    : ''
+const clockOutLabel = computed(() => {
+  if (!attendance.clockOutTime) return '—'
+  return formatClockTime(attendance.clockOutTime.toISOString())
+})
+
+const remainingMs = computed(() => {
+  const out = attendance.clockOutTime
+  if (!out) return 0
+  return out.getTime() - now.value
+})
+
+const isDone = computed(() => hasClockIn.value && remainingMs.value <= 0)
+
+const countdownPhase = computed(() => {
+  if (isDone.value) return 'is-done'
+  if (remainingMs.value <= 30 * 60 * 1000) return 'is-soon'
+  return ''
+})
+
+const countdownDisplay = computed(() => {
+  if (isDone.value) return '已下班'
+  return formatCountdown(remainingMs.value)
+})
+
+const countdownHint = computed(() => {
+  if (isDone.value) return `今日工时已满 ${attendance.workHours || DEFAULT_WORK_HOURS} 小时`
+  const out = attendance.clockOutTime
+  if (!out) return ''
+  return `${formatClockTime(out.toISOString())} 下班`
+})
+
+const progressPercent = computed(() => {
+  const start = attendance.clockInTime
+  const end = attendance.clockOutTime
+  if (!start || !end) return 0
+  return Math.round(workProgress(start, end, new Date(now.value)) * 100)
+})
+
+function clockInNow() {
+  attendance.clockIn()
 }
 
-function onTimeChange() {
-  if (!timeInput.value) {
-    attendance.resetToday()
+function openEdit() {
+  editError.value = ''
+  editTime.value = attendance.todayRecord
+    ? isoToTimeInput(attendance.todayRecord.clockIn)
+    : isoToTimeInput(new Date().toISOString())
+  editWorkHours.value = String(attendance.workHours || DEFAULT_WORK_HOURS)
+  editOpen.value = true
+}
+
+function onWorkHoursInput(e: Event) {
+  const input = e.target as HTMLInputElement
+  const digits = sanitizeWorkHoursInput(input.value)
+  editWorkHours.value = digits
+  input.value = digits
+}
+
+function onWorkHoursKeydown(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  if (WORK_HOURS_NAV_KEYS.has(e.key)) return
+  if (/^\d$/.test(e.key)) return
+  e.preventDefault()
+}
+
+function onWorkHoursPaste(e: ClipboardEvent) {
+  e.preventDefault()
+  const text = e.clipboardData?.getData('text') ?? ''
+  editWorkHours.value = sanitizeWorkHoursInput(text).slice(0, 2)
+}
+
+function normalizeWorkHoursInput() {
+  if (!editWorkHours.value) {
+    editWorkHours.value = String(attendance.workHours || DEFAULT_WORK_HOURS)
     return
   }
-  attendance.setClockInTime(timeInput.value)
+  const parsed = parseWorkHoursInput(editWorkHours.value)
+  if (parsed !== null) {
+    editWorkHours.value = String(parsed)
+  }
 }
 
-function fillNow() {
-  const now = new Date()
-  timeInput.value = isoToTimeInput(now.toISOString())
-  attendance.clockIn(now)
+function closeEdit() {
+  editOpen.value = false
+  editError.value = ''
 }
 
-function onClear() {
+function fillEditNow() {
+  editTime.value = isoToTimeInput(new Date().toISOString())
+}
+
+function saveEdit() {
+  editError.value = ''
+  if (!editWorkHours.value) {
+    editError.value = '请设置每日工时'
+    return
+  }
+  if (!attendance.setWorkHoursFromInput(editWorkHours.value)) {
+    editError.value = `工时必须为 ${MIN_WORK_HOURS}–${MAX_WORK_HOURS} 的整数`
+    return
+  }
+  if (!editTime.value) {
+    editError.value = '请选择上班时间'
+    return
+  }
+  if (!attendance.setClockInTime(editTime.value)) {
+    editError.value = '时间格式无效'
+    return
+  }
+  closeEdit()
+}
+
+function clearEdit() {
   attendance.resetToday()
-  timeInput.value = ''
+  closeEdit()
+}
+
+function openHistory() {
+  historyOpen.value = true
+  void nextTick(() => historyCalendarRef.value?.resetView())
+}
+
+function closeHistory() {
+  historyOpen.value = false
 }
 
 function onReminderToggle(e: Event) {
   attendance.setReminderEnabled((e.target as HTMLInputElement).checked)
 }
 
-watch(() => attendance.todayRecord?.clockIn, syncFromStore)
-
 let dayTimer: ReturnType<typeof setInterval> | undefined
+let tickTimer: ReturnType<typeof setInterval> | undefined
 
 onMounted(() => {
   attendance.refreshToday()
-  syncFromStore()
   dayTimer = setInterval(() => attendance.refreshToday(), 60_000)
+  tickTimer = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
 })
 
 onBeforeUnmount(() => {
   if (dayTimer) clearInterval(dayTimer)
+  if (tickTimer) clearInterval(tickTimer)
 })
 </script>
 
@@ -151,92 +332,89 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
 }
 
-.panel-grid {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px 12px;
-  align-items: end;
+.countdown-hero {
+  text-align: center;
+  padding: 4px 0 6px;
 }
 
-.time-field {
+.countdown-hero__value {
   display: block;
-  min-width: 0;
-}
-
-.time-field__label {
-  display: block;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.time-field__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.time-input {
-  width: 100%;
-  height: 30px;
-  padding: 0 8px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  line-height: 1.1;
 }
 
-.time-field__row .time-input {
-  flex: 1;
-  min-width: 0;
+.countdown-hero.is-soon .countdown-hero__value {
+  color: #f59e0b;
 }
 
-.time-input:focus {
-  border-color: var(--border-focus);
-  outline: none;
+.countdown-hero.is-done .countdown-hero__value {
+  font-size: 24px;
+  color: #22c55e;
 }
 
-.now-btn {
-  height: 30px;
-  padding: 0 10px;
-  flex-shrink: 0;
-  font-size: 12px;
-}
-
-.time-block {
-  text-align: right;
-  padding-bottom: 1px;
-}
-
-.time-label {
+.countdown-hero__hint {
   display: block;
+  margin-top: 4px;
   font-size: 11px;
   color: var(--text-muted);
-  margin-bottom: 0;
-}
-
-.time-value {
-  display: block;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  color: var(--text);
-  line-height: 1.15;
 }
 
-.time-value.accent {
-  color: var(--accent);
+.countdown-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+  overflow: hidden;
+  margin: 2px 0 8px;
 }
 
-.time-hint {
-  display: block;
-  font-size: 10px;
+.countdown-progress__bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 1s linear;
+}
+
+.countdown-hero.is-soon + .countdown-progress .countdown-progress__bar {
+  background: #f59e0b;
+}
+
+.countdown-hero.is-done + .countdown-progress .countdown-progress__bar {
+  background: #22c55e;
+}
+
+.countdown-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
   color: var(--text-muted);
-  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 8px 0 12px;
+}
+
+.countdown-empty__text {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.clock-in-btn {
+  min-width: 112px;
+  height: 32px;
 }
 
 .panel-foot {
@@ -247,6 +425,12 @@ onBeforeUnmount(() => {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .reminder-toggle {
@@ -267,12 +451,105 @@ onBeforeUnmount(() => {
 .link-btn {
   font-size: 12px;
   color: var(--text-muted);
-  padding: 2px 4px;
+  padding: 2px 6px;
   border-radius: 4px;
 }
 
 .link-btn:hover {
   color: var(--accent);
   background: var(--surface-hover);
+}
+
+.time-field__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.time-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-input:focus {
+  border-color: var(--border-focus);
+  outline: none;
+}
+
+.now-btn {
+  height: 32px;
+  padding: 0 10px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.work-hours-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sheet-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: var(--space-4);
+}
+
+.sheet-actions--end {
+  justify-content: flex-end;
+}
+
+.sheet-actions__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.sheet-actions__danger {
+  color: var(--text-muted);
+}
+
+.sheet-actions__danger:hover:not(:disabled) {
+  color: #ef4444;
+}
+
+.sheet-warn {
+  margin: 0;
+  font-size: 12px;
+  color: #ef4444;
+}
+
+.confirm-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.history-sheet {
+  width: min(400px, 100%);
+}
+
+.mac-sheet.narrow {
+  width: min(360px, 100%);
+}
+
+.attendance-sheet-backdrop {
+  z-index: 1100;
+}
+
+.attendance-sheet-backdrop.is-confirm {
+  z-index: 1110;
 }
 </style>

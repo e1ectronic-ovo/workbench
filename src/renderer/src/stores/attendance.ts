@@ -3,7 +3,10 @@ import { computed, ref } from 'vue'
 
 const STORAGE_KEY = 'workbench.attendance'
 const REMINDER_KEY = 'workbench.attendance.reminder'
-export const WORK_HOURS = 9
+const WORK_HOURS_KEY = 'workbench.attendance.work-hours'
+export const DEFAULT_WORK_HOURS = 9
+export const MIN_WORK_HOURS = 1
+export const MAX_WORK_HOURS = 24
 export const REMINDER_BEFORE_MINUTES = 3
 
 export interface DayAttendance {
@@ -22,11 +25,32 @@ const DEFAULT_REMINDER: ReminderSettings = {
   firedDateKey: null
 }
 
-function todayKey(date = new Date()): string {
+export function attendanceDateKey(date = new Date()): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+function todayKey(date = new Date()): string {
+  return attendanceDateKey(date)
+}
+
+export function formatDateKeyLabel(dateKey: string, base = new Date()): string {
+  const parts = dateKey.split('-').map(Number)
+  if (parts.length < 3 || parts.some(Number.isNaN)) return dateKey
+  const date = new Date(parts[0], parts[1] - 1, parts[2])
+  if (Number.isNaN(date.getTime())) return dateKey
+  if (dateKey === attendanceDateKey(base)) return '今天'
+  const yesterday = new Date(base)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (dateKey === attendanceDateKey(yesterday)) return '昨天'
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short'
+  })
 }
 
 function loadRecords(): AttendanceMap {
@@ -74,6 +98,52 @@ function persistReminder(reminder: ReminderSettings) {
   }
 }
 
+export function clampWorkHours(hours: number): number {
+  return Math.min(MAX_WORK_HOURS, Math.max(MIN_WORK_HOURS, Math.round(hours)))
+}
+
+export function sanitizeWorkHoursInput(value: string): string {
+  return value.replace(/\D/g, '')
+}
+
+export function parseWorkHoursInput(value: string): number | null {
+  const digits = sanitizeWorkHoursInput(value)
+  if (!digits) return null
+  const hours = parseInt(digits, 10)
+  if (Number.isNaN(hours)) return null
+  return clampWorkHours(hours)
+}
+
+function loadWorkHours(): number {
+  try {
+    const raw = localStorage.getItem(WORK_HOURS_KEY)
+    if (!raw || raw === 'undefined' || raw === 'null') return DEFAULT_WORK_HOURS
+    const parsed = parseWorkHoursInput(raw)
+    return parsed ?? DEFAULT_WORK_HOURS
+  } catch {
+    return DEFAULT_WORK_HOURS
+  }
+}
+
+function normalizeWorkHoursState(value: unknown): number {
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return clampWorkHours(value)
+  }
+  if (typeof value === 'string') {
+    const parsed = parseWorkHoursInput(value)
+    if (parsed !== null) return parsed
+  }
+  return DEFAULT_WORK_HOURS
+}
+
+function persistWorkHours(hours: number) {
+  try {
+    localStorage.setItem(WORK_HOURS_KEY, String(hours))
+  } catch {
+    /* ignore */
+  }
+}
+
 export function formatClockTime(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
@@ -94,6 +164,24 @@ export function isoToTimeInput(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+export function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+export function workProgress(clockIn: Date, clockOut: Date, now = new Date()): number {
+  const total = clockOut.getTime() - clockIn.getTime()
+  if (total <= 0) return 1
+  const elapsed = now.getTime() - clockIn.getTime()
+  return Math.min(1, Math.max(0, elapsed / total))
+}
+
 export function timeInputToDate(time: string, base = new Date()): Date | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim())
   if (!m) return null
@@ -108,7 +196,12 @@ export function timeInputToDate(time: string, base = new Date()): Date | null {
 export const useAttendanceStore = defineStore('attendance', () => {
   const records = ref<AttendanceMap>(loadRecords())
   const reminder = ref<ReminderSettings>(loadReminder())
+  const workHoursState = ref(normalizeWorkHoursState(loadWorkHours()))
   const today = ref(todayKey())
+
+  persistWorkHours(workHoursState.value)
+
+  const workHours = computed(() => workHoursState.value)
 
   const todayRecord = computed(() => records.value[today.value] ?? null)
 
@@ -118,7 +211,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
 
   const clockOutTime = computed(() => {
     if (!todayRecord.value) return null
-    return addWorkHours(todayRecord.value.clockIn, WORK_HOURS)
+    return addWorkHours(todayRecord.value.clockIn, workHoursState.value)
   })
 
   const reminderFireTime = computed(() => {
@@ -128,6 +221,8 @@ export const useAttendanceStore = defineStore('attendance', () => {
   })
 
   const reminderEnabled = computed(() => reminder.value.enabled)
+
+  const recordMap = computed(() => records.value)
 
   function refreshToday() {
     const key = todayKey()
@@ -161,16 +256,41 @@ export const useAttendanceStore = defineStore('attendance', () => {
   }
 
   function resetToday() {
+    deleteRecord(today.value)
+  }
+
+  function deleteRecord(dateKey: string) {
     refreshToday()
     const next = { ...records.value }
-    delete next[today.value]
+    delete next[dateKey]
     records.value = next
     persistRecords(records.value)
+    if (dateKey === today.value && reminder.value.firedDateKey === dateKey) {
+      reminder.value = { ...reminder.value, firedDateKey: null }
+      persistReminder(reminder.value)
+    }
   }
 
   function setReminderEnabled(enabled: boolean) {
     reminder.value = { ...reminder.value, enabled }
     persistReminder(reminder.value)
+  }
+
+  function setWorkHours(hours: number) {
+    const next = normalizeWorkHoursState(hours)
+    workHoursState.value = next
+    persistWorkHours(next)
+    if (reminder.value.firedDateKey === today.value) {
+      reminder.value = { ...reminder.value, firedDateKey: null }
+      persistReminder(reminder.value)
+    }
+  }
+
+  function setWorkHoursFromInput(value: string): boolean {
+    const parsed = parseWorkHoursInput(value)
+    if (parsed === null) return false
+    setWorkHours(parsed)
+    return true
   }
 
   function markReminderFired(dateKey = today.value) {
@@ -210,6 +330,8 @@ export const useAttendanceStore = defineStore('attendance', () => {
   return {
     today,
     todayRecord,
+    records: recordMap,
+    workHours,
     clockInTime,
     clockOutTime,
     reminderFireTime,
@@ -218,8 +340,11 @@ export const useAttendanceStore = defineStore('attendance', () => {
     clockIn,
     setClockInTime,
     resetToday,
+    deleteRecord,
     refreshToday,
     setReminderEnabled,
+    setWorkHours,
+    setWorkHoursFromInput,
     markReminderFired,
     syncReminderSchedule
   }

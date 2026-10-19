@@ -7,6 +7,7 @@ import {
   type HomeWidgetGridDef,
   type HomeWidgetId
 } from '../home/registry'
+import { findFreeSlot, isLegacyStackedHomeLayout, resolveOverlaps } from '../lib/home-grid'
 
 export interface HomeWidgetConfig {
   id: HomeWidgetId
@@ -80,11 +81,27 @@ function isWidgetConfig(x: unknown): x is HomeWidgetConfig {
 }
 
 function mergeWithRegistry(widgets: HomeWidgetConfig[]): HomeWidgetConfig[] {
-  const byId = new Map(widgets.map((w) => [w.id, w]))
+  const source = isLegacyStackedHomeLayout(widgets)
+    ? widgets.map((item) => {
+        if (item.id !== 'weather') return item
+        const weather = homeWidgetDef('weather')
+        return weather ? { ...item, ...weather.grid } : item
+      })
+    : widgets
+  const byId = new Map(source.map((w) => [w.id, w]))
   return HOME_WIDGET_DEFS.map((def) => {
     const existing = byId.get(def.id)
-    if (existing) return existing
-    return defaultWidgetConfig(def)
+    if (!existing) return defaultWidgetConfig(def)
+    // 便签曾默认放在第 5 列，窄布局时会落到视野外
+    if (
+      existing.id === 'notes' &&
+      existing.col === 5 &&
+      existing.row === 1 &&
+      existing.colSpan === 2
+    ) {
+      return { ...existing, ...def.grid }
+    }
+    return existing
   })
 }
 
@@ -145,12 +162,15 @@ function loadState(): HomeState {
     if (raw) {
       const data = JSON.parse(raw) as Partial<HomeState>
       if (data.layout && data.widgets && Array.isArray(data.widgets)) {
-        const widgets = mergeWithRegistry(data.widgets.filter(isWidgetConfig))
         const layout: HomeLayoutSettings = {
           columns: clampInt(data.layout.columns, 4, 16, DEFAULT_LAYOUT.columns),
           gap: clampInt(data.layout.gap, 4, 32, DEFAULT_LAYOUT.gap),
           panelOpacity: clampInt(data.layout.panelOpacity, 0, 100, DEFAULT_LAYOUT.panelOpacity)
         }
+        const widgets = resolveOverlaps(
+          mergeWithRegistry(data.widgets.filter(isWidgetConfig)),
+          layout.columns
+        )
         return { layout, widgets }
       }
     }
@@ -158,7 +178,13 @@ function loadState(): HomeState {
     const legacyRaw = localStorage.getItem('workbench.home-widgets')
     if (legacyRaw) {
       const migrated = migrateLegacy(JSON.parse(legacyRaw) as unknown)
-      if (migrated) return migrated
+      if (migrated) {
+        migrated.widgets = resolveOverlaps(
+          mergeWithRegistry(migrated.widgets),
+          migrated.layout.columns
+        )
+        return migrated
+      }
     }
   } catch {
     /* ignore */
@@ -173,10 +199,6 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
 
 export const useHomeWidgetsStore = defineStore('homeWidgets', () => {
   const state = ref<HomeState>(loadState())
-
-  if (localStorage.getItem(STORAGE_KEY) === null) {
-    persist(state.value)
-  }
 
   const layout = computed(() => state.value.layout)
 
@@ -210,6 +232,8 @@ export const useHomeWidgetsStore = defineStore('homeWidgets', () => {
     }
   }
 
+  persist(state.value)
+
   function commit(patch: Partial<HomeState>) {
     state.value = { ...state.value, ...patch }
     persist(state.value)
@@ -226,35 +250,56 @@ export const useHomeWidgetsStore = defineStore('homeWidgets', () => {
     if (patch.panelOpacity !== undefined) {
       next.panelOpacity = clampInt(patch.panelOpacity, 0, 100, DEFAULT_LAYOUT.panelOpacity)
     }
-    commit({ layout: next })
+
+    const widgets =
+      patch.columns === undefined
+        ? state.value.widgets
+        : resolveOverlaps(state.value.widgets, next.columns)
+    commit({ layout: next, widgets })
   }
 
   function setEnabled(id: HomeWidgetId, enabled: boolean) {
-    const widgets = state.value.widgets.map((w) =>
-      w.id === id ? { ...w, enabled } : w
+    const widgets = resolveOverlaps(
+      state.value.widgets.map((w) => (w.id === id ? { ...w, enabled } : w)),
+      state.value.layout.columns
     )
     commit({ widgets })
   }
 
   function setPosition(id: HomeWidgetId, col: number, row: number) {
-    const widgets = state.value.widgets.map((w) => {
-      if (w.id !== id) return w
-      const colSpan = Math.min(w.colSpan, state.value.layout.columns)
-      const nextCol = clampInt(col, 1, state.value.layout.columns - colSpan + 1, w.col)
-      const nextRow = Math.max(1, Math.round(row))
-      return { ...w, col: nextCol, row: nextRow, colSpan }
-    })
+    const columns = state.value.layout.columns
+    const current = state.value.widgets.find((w) => w.id === id)
+    if (!current) return
+
+    const colSpan = Math.min(current.colSpan, columns)
+    const others = state.value.widgets.filter((w) => w.id !== id && w.enabled)
+    const slot = findFreeSlot(
+      { ...current, colSpan, enabled: true },
+      others,
+      columns,
+      { col, row }
+    )
+
+    const widgets = state.value.widgets.map((w) =>
+      w.id === id ? { ...w, col: slot.col, row: slot.row, colSpan } : w
+    )
     commit({ widgets })
   }
 
   function setSpan(id: HomeWidgetId, colSpan: number, rowSpan?: number) {
-    const widgets = state.value.widgets.map((w) => {
-      if (w.id !== id) return w
-      const span = clampInt(colSpan, 1, state.value.layout.columns, w.colSpan)
-      const rows = rowSpan !== undefined ? Math.max(1, Math.round(rowSpan)) : w.rowSpan
-      const col = Math.min(w.col, state.value.layout.columns - span + 1)
-      return { ...w, col, colSpan: span, rowSpan: rows }
-    })
+    const columns = state.value.layout.columns
+    const current = state.value.widgets.find((w) => w.id === id)
+    if (!current) return
+
+    const span = clampInt(colSpan, 1, columns, current.colSpan)
+    const rows = rowSpan !== undefined ? Math.max(1, Math.round(rowSpan)) : current.rowSpan
+    const others = state.value.widgets.filter((w) => w.id !== id && w.enabled)
+    const candidate = { ...current, colSpan: span, rowSpan: rows, enabled: true }
+    const slot = findFreeSlot(candidate, others, columns, { col: current.col, row: current.row })
+
+    const widgets = state.value.widgets.map((w) =>
+      w.id === id ? { ...w, col: slot.col, row: slot.row, colSpan: span, rowSpan: rows } : w
+    )
     commit({ widgets })
   }
 
