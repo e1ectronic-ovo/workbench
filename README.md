@@ -92,7 +92,9 @@ npm run dev
 | 脚本 | 作用 |
 | --- | --- |
 | `npm run dev` | 开发模式启动 |
-| `npm run build` | 先 `typecheck` 再 `electron-vite build` |
+| `npm run build` | 先 `typecheck` 再 `electron-vite build`（产物在 `out/`） |
+| `npm run pack` | 构建后产出免安装目录 `dist/win-unpacked/` |
+| `npm run dist` | 构建后打 Windows 安装包 + 免安装单文件 |
 | `npm run preview` | 预览打包结果 |
 | `npm run typecheck` | 对 main / web 两份 tsconfig 做类型检查 |
 | `npm run lint` / `lint:fix` | ESLint 检查 / 自动修复 |
@@ -102,9 +104,18 @@ npm run dev
 
 ## 打包
 
-- 构建工具：`electron-vite`。
-- Windows 目标：`nsis`；`appId` 为 `com.workbench.app`，窗口图标使用 `resources/icon.ico`。
-- 资源（图标等）通过 `extraResources` 随包分发。
+- 构建工具：`electron-vite`；分发打包：`electron-builder`（配置在 `package.json` 的 `build` 字段）。
+- 一条命令出包：`npm run dist`（会先跑 `typecheck` + 构建）。
+- Windows 产物（输出到 `dist/`）：
+  - `Workbench-<version>-x64.exe` — NSIS 安装包（非一键安装，可改安装目录，创建桌面/开始菜单快捷方式）
+  - `Workbench-<version>-portable.exe` — 免安装单文件，双击即用
+  - `win-unpacked/` — 未压缩目录，便于排查问题
+- `appId` 为 `com.workbench.app`，窗口与安装包图标使用 `resources/icon.ico`；图标等资源通过 `extraResources` 分发到 `process.resourcesPath`。
+- `vue` / `pinia` 只被渲染层使用且已由 Vite 打进 bundle，因此归在 `devDependencies`，不进 `app.asar`。
+- 未配置代码签名，安装时 Windows SmartScreen 可能提示"未知发布者"，选择"仍要运行"即可。
+- 若 Electron 运行时下载失败（网络受限），可指定镜像：
+  `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npm run dist`
+
 
 ## 配置持久化位置
 
