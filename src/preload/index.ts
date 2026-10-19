@@ -36,11 +36,8 @@ const api = {
       userData: string
     }>,
 
-  setChromeTheme: (payload: {
-    color: string
-    symbolColor: string
-    backgroundColor?: string
-  }) => ipcRenderer.invoke('window:setChromeTheme', payload) as Promise<boolean>,
+  setChromeTheme: (payload: { backgroundColor?: string }) =>
+    ipcRenderer.invoke('window:setChromeTheme', payload) as Promise<boolean>,
 
   isMaximized: () => ipcRenderer.invoke('window:isMaximized') as Promise<boolean>,
 

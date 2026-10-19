@@ -30,11 +30,7 @@ export interface WorkbenchAPI {
     isPackaged: boolean
     userData: string
   }>
-  setChromeTheme: (payload: {
-    color: string
-    symbolColor: string
-    backgroundColor?: string
-  }) => Promise<boolean>
+  setChromeTheme: (payload: { backgroundColor?: string }) => Promise<boolean>
   isMaximized: () => Promise<boolean>
   minimizeWindow: () => Promise<boolean>
   maximizeWindow: () => Promise<boolean>

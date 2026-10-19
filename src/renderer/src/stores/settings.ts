@@ -417,11 +417,7 @@ function applyAppearance(a: AppearanceSettings) {
   root.dataset.density = a.density
   root.dataset.scheme = t.scheme
 
-  void window.workbench?.setChromeTheme?.({
-    color: t.chromeBg,
-    symbolColor: t.chromeFg,
-    backgroundColor: t.bg
-  })
+  void window.workbench?.setChromeTheme?.({ backgroundColor: t.bg })
 }
 
 export const useSettingsStore = defineStore('settings', () => {

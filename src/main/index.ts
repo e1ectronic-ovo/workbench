@@ -98,7 +98,7 @@ function createWindow(): BrowserWindow {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true
@@ -121,9 +121,8 @@ function createWindow(): BrowserWindow {
 
   win.webContents.on('will-attach-webview', (_e, webPreferences) => {
     delete webPreferences.preload
-    ;(webPreferences as any).nodeIntegration = false
-    // 禁止访客页自行创建原生子窗口；开窗策略统一走 setWindowOpenHandler
-    ;(webPreferences as any).nativeWindowOpen = true
+    // 访客页（内嵌网站）禁用 Node 集成；nativeWindowOpen 在新版 Electron 已默认开启，无需显式设置
+    webPreferences.nodeIntegration = false
   })
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
@@ -251,10 +250,7 @@ function registerIpc(): void {
 
   ipcMain.handle(
     'window:setChromeTheme',
-    (
-      event,
-      payload: { color: string; symbolColor: string; backgroundColor?: string }
-    ) => {
+    (event, payload: { backgroundColor?: string }) => {
       const win = BrowserWindow.fromWebContents(event.sender)
       if (!win) return false
       try {
@@ -364,7 +360,7 @@ function notifyGuestOpenTab(url: string): void {
 
 function isBlankPopupUrl(url: string): boolean {
   const raw = (url || '').trim()
-  return !raw || raw === 'about:blank' || /^about:blank[\?#]/i.test(raw) || raw === 'about:newblank'
+  return !raw || raw === 'about:blank' || /^about:blank[?#]/i.test(raw) || raw === 'about:newblank'
 }
 
 /**

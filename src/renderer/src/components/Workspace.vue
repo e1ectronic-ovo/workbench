@@ -102,6 +102,17 @@ import { createPageTab, tabLabel as formatTabLabel, type PageTab } from '../lib/
 import type { ModuleConfig } from '../modules/registry'
 import { normalize, useModulesStore } from '../stores/modules'
 
+/** <webview> 元素暴露的运行时方法（Electron.WebviewTag 在 renderer 里不可见，这里局部声明用到的子集）。 */
+interface WebviewEl extends HTMLElement {
+  canGoBack(): boolean
+  canGoForward(): boolean
+  goBack(): void
+  goForward(): void
+  reload(): void
+  loadURL(url: string): Promise<void>
+  isLoadingMainFrame?(): boolean
+}
+
 const props = defineProps<{
   module: ModuleConfig
 }>()
@@ -118,7 +129,7 @@ const urlBarOpen = ref(false)
 const draft = ref(homeUrl)
 const urlInput = ref<HTMLInputElement | null>(null)
 
-const webviewRefs = new Map<string, any>()
+const webviewRefs = new Map<string, WebviewEl>()
 const attachedTabs = new Set<string>()
 
 const partition = GUEST_PARTITION
@@ -147,11 +158,11 @@ function syncModuleState() {
   })
 }
 
-function activeWv(): any {
+function activeWv(): WebviewEl | undefined {
   return webviewRefs.get(activeTabId.value)
 }
 
-function syncNav(el?: any) {
+function syncNav(el?: WebviewEl) {
   const target = el ?? activeWv()
   if (!target) {
     canBack.value = false
@@ -167,8 +178,8 @@ function syncNav(el?: any) {
   }
 }
 
-function attachWebview(tabId: string, el: any) {
-  if (!el || attachedTabs.has(tabId)) return
+function attachWebview(tabId: string, el: WebviewEl) {
+  if (attachedTabs.has(tabId)) return
   attachedTabs.add(tabId)
 
   el.addEventListener('did-start-loading', () => {
@@ -186,22 +197,23 @@ function attachWebview(tabId: string, el: any) {
       syncModuleState()
     }
   })
-  el.addEventListener('page-title-updated', (e: any) => {
-    const t = e?.title as string
+  el.addEventListener('page-title-updated', (e: Event) => {
+    const t = (e as unknown as { title?: string }).title
     if (!t) return
     patchTab(tabId, { title: t })
     if (tabId === activeTabId.value) syncModuleState()
   })
-  el.addEventListener('did-navigate', (e: any) => {
-    patchTab(tabId, { url: e.url })
+  el.addEventListener('did-navigate', (e: Event) => {
+    patchTab(tabId, { url: (e as unknown as { url: string }).url })
     if (tabId === activeTabId.value) {
       syncNav(el)
       syncModuleState()
     }
   })
-  el.addEventListener('did-navigate-in-page', (e: any) => {
-    if (!e.isMainFrame) return
-    patchTab(tabId, { url: e.url })
+  el.addEventListener('did-navigate-in-page', (e: Event) => {
+    const nav = e as unknown as { url: string; isMainFrame: boolean }
+    if (!nav.isMainFrame) return
+    patchTab(tabId, { url: nav.url })
     if (tabId === activeTabId.value) {
       syncNav(el)
       syncModuleState()
@@ -211,9 +223,10 @@ function attachWebview(tabId: string, el: any) {
 
 function setWebviewRef(tabId: string, el: HTMLElement | null) {
   if (el) {
-    webviewRefs.set(tabId, el)
-    attachWebview(tabId, el)
-    if (tabId === activeTabId.value) syncNav(el)
+    const wv = el as WebviewEl
+    webviewRefs.set(tabId, wv)
+    attachWebview(tabId, wv)
+    if (tabId === activeTabId.value) syncNav(wv)
   } else {
     webviewRefs.delete(tabId)
     attachedTabs.delete(tabId)
