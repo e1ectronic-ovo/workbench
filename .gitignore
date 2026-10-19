@@ -1,6 +1,19 @@
 node_modules
 out
 dist
+release
 .DS_Store
 *.log
 .vite
+*.tsbuildinfo
+.env
+.env.*
+preview.png
+preview.html
+# 草稿 / 探针
+scripts/_probe-*
+_probe-out/
+
+# 本地工作区数据（IDE / 助手缓存）
+.workbuddy/
+.agents/
