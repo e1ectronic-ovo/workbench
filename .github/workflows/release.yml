@@ -26,7 +26,21 @@ jobs:
       - name: 构建
         # 只构建，不由 electron-builder 上传：多目标并发发布会给同一个 tag 建出重复 Release，
         # 导致 releases/latest 指向只有 blockmap 的那份，客户端拿不到 latest.yml。
-        run: npm run dist
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run dist 2>&1 | tee build.log
+
+      # 失败原因通过 annotation 暴露：Actions 日志要鉴权才能看，注解是公开可读的
+      - name: 输出失败原因
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f build.log ]; then
+            tail -n 25 build.log | tr -d '\r' | sed '/^$/d' | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
 
       - name: 发布 Release
         shell: bash
