@@ -83,7 +83,8 @@
     "publish": {
       "provider": "github",
       "owner": "e1ectronic-ovo",
-      "repo": "workbench"
+      "repo": "workbench",
+      "releaseType": "release"
     }
   },
   "dependencies": {

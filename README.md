@@ -168,6 +168,18 @@ npm run dev
   `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npm run dist`
 
 
+## 发布
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+- tag 触发 `.github/workflows/release.yml`：下载内核 → 构建 NSIS 安装包 → 连同 `latest.yml` 上传到 GitHub Release。
+- 本地发布：`GH_TOKEN=<token> npm run release`（等价于 `dist` + `--publish always`）。
+- 客户端靠 Release 里的 `latest.yml` 判断版本，因此**仓库必须是公开的**，Release 也要是正式版而不是 draft
+  （`build.publish.releaseType` 已设为 `release`）。
+
 ## 配置持久化位置
 
 - 外观 / 模块 / 首页布局 / 考勤 / 天气偏好：`localStorage`（键名前缀 `workbench.*`）。
