@@ -17,17 +17,7 @@ export interface ModuleState {
 const MODULES_KEY = 'workbench.modules'
 const STATE_KEY = 'workbench.module-state'
 const MODULE_SEED_KEY = 'workbench.module-seed'
-const MODULE_SEED = 4
-
-/** 老版本随包内置的站点 id，seed 4 时一次性清理 */
-const LEGACY_DEFAULT_IDS = new Set([
-  'xiaohongshu',
-  'bilibili',
-  'weibo',
-  'douyin',
-  'zhihu',
-  'github'
-])
+const MODULE_SEED = 3
 
 function applyModuleSeeds(list: ModuleConfig[]): { list: ModuleConfig[]; changed: boolean } {
   const applied = Number(localStorage.getItem(MODULE_SEED_KEY) || '1')
@@ -37,15 +27,6 @@ function applyModuleSeeds(list: ModuleConfig[]): { list: ModuleConfig[]; changed
   // seed 3：移除曾内置的 doubao
   if (applied < 3) {
     const filtered = next.filter((m) => m.id !== 'doubao')
-    if (filtered.length !== next.length) {
-      next = filtered
-      changed = true
-    }
-  }
-
-  // seed 4：不再预置站点，清掉老版本内置过的那批
-  if (applied < 4) {
-    const filtered = next.filter((m) => !LEGACY_DEFAULT_IDS.has(m.id))
     if (filtered.length !== next.length) {
       next = filtered
       changed = true
