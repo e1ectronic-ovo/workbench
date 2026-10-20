@@ -151,7 +151,7 @@ npm run dev
 | 脚本 | 作用 |
 | --- | --- |
 | `npm run dev` | 开发模式启动 |
-| `npm run build` | 先 `typecheck` 再 `electron-vite build`（产物在 `out/`） |
+| `npm run build` | `typecheck` → 生成图标 → `electron-vite build`（产物在 `out/`） |
 | `npm run core` | 检查 / 下载 mihomo 内核与 GeoIP 数据到 `resources/core/` |
 | `npm run pack` | 拉内核 + 构建后产出免安装目录 `dist/win-unpacked/` |
 | `npm run dist` | 拉内核 + 构建后打 Windows 安装包 + 免安装单文件 |
@@ -159,13 +159,33 @@ npm run dev
 | `npm run typecheck` | 对 main / web 两份 tsconfig 做类型检查 |
 | `npm run lint` / `lint:fix` | ESLint 检查 / 自动修复 |
 | `npm run format` | Prettier 格式化 |
-| `npm run icons` | 合成图标：`resources/icon-frame.svg` 底板 + 鲸鱼娘头像 → `icon.png` / `icon.ico` |
+| `npm run icons` | 合成图标（`build` 已自动调用，一般不用手动跑）：底板 + 鲸鱼娘头像 → `icon.png` / `icon.ico` |
 | `npm run whale-assets` / `maid-assets` | 优化主题装饰资源 |
+
+## 图标
+
+图标不再是手绘 SVG 一次性产物，而是**由源图在构建时合成**：
+
+```
+resources/icon-frame.svg   矢量底板（深海蓝渐变 / 天蓝光晕 / 暗角）
+        +                                    ──► 1024 主图 ──► resources/icon.png (512)
+src/renderer/src/assets/whale/logo.png   鲸鱼娘头像        └──► resources/icon.ico (16~256)
+```
+
+- 生成脚本 `scripts/generate-icons.mjs`：头像 lanczos3 放大 + 轻度锐化，按 alpha 生成轮廓投影，
+  与底板合成；ico 各尺寸**都由 1024 主图单独降采样**，不逐级缩放。
+- 已接入 `npm run build`，因此 `npm run pack` / `npm run dist` / CI 出包的图标**永远与源图一致**，
+  不存在“改了头像忘了重新生成”的漏项。
+- 产物是确定性的，且只在内容变化时写盘（不刷 mtime、不污染 git），重复构建不会触发多余的重新打包。
+- 脚本自带校验：`icon.png` 必须是 512×512，`icon.ico` 必须包含 16~256 全尺寸，
+  尤其不能缺 256×256（electron-builder 会直接拒绝打包）。校验失败以非 0 退出，构建立即中断。
+- CI 另外会比对 `resources/` 是否被重新生成改动过，不一致时给出告警注解——只告警不阻断，
+  因为不同平台的 libvips 采样存在微小差异。
 
 ## 打包
 
 - 构建工具：`electron-vite`；分发打包：`electron-builder`（配置在 `package.json` 的 `build` 字段）。
-- 一条命令出包：`npm run dist`（会先跑 `typecheck` + 构建）。
+- 一条命令出包：`npm run dist`（会先跑 `typecheck` + 生成图标 + 构建）。
 - Windows 产物（输出到 `dist/`）：
   - `Whaletide-<version>-x64.exe` — NSIS 安装包（非一键安装，可改安装目录，创建桌面/开始菜单快捷方式）
   - `Whaletide-<version>-portable.exe` — 免安装单文件，双击即用

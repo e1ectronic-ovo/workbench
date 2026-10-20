@@ -42,6 +42,18 @@ jobs:
             done
           fi
 
+      # 图标在构建时由 icon-frame.svg + logo.png 重新生成；仓库里提交的产物若与源图不一致，
+      # 说明有人改了源图却忘了提交重新生成的图标。只告警不阻断：不同平台的 libvips 采样存在微小差异。
+      - name: 校验图标与源图一致
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain resources/)" ]; then
+            echo "::warning::resources/icon.png / icon.ico 与源图不一致，请在本地执行 npm run icons 并提交"
+            git --no-pager diff --stat resources/ || true
+          else
+            echo "图标与源图一致"
+          fi
+
       - name: 发布 Release
         shell: bash
         env:
