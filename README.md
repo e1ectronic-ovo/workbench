@@ -1,10 +1,14 @@
-# Workbench
+# 鲸汐 · Whaletide
 
 个人桌面工作台客户端。基于 **Electron + Vue 3**，把常用的网站和本地小工具集中到一个带侧边栏的桌面应用里。
 
+> 0.3.0 起由 **Workbench** 更名为 **鲸汐（Whaletide）**，图标同时换成鲸鱼娘形象。
+> 改名只影响显示名，技术标识（`appId`、`window.workbench` 桥、`localStorage` 键名、`persist:workbench` 会话分区）
+> 全部保持原样；老用户的数据目录会被原样沿用，不做任何搬移（见「更新」）。
+
 ```
 +--------------------------------------------------------------+
-|  [_][_][_]   Workbench                                — □ ✕   |  自定义标题栏（非 macOS）
+|  [_][_][_]   鲸汐                                     — □ ✕   |  自定义标题栏（非 macOS）
 +--+-----------------------------------------------------------+
 |🏠|                                                           |
 |  |   首页仪表盘：下班倒计时 · 天气 · 便签 · 网络代理（可拖拽）    |
@@ -42,7 +46,7 @@
 
 ### 网络代理
 
-Workbench 自己就是代理客户端，不依赖 FLClash / Clash Verge 在后台常驻。
+鲸汐自己就是代理客户端，不依赖 FLClash / Clash Verge 在后台常驻。
 
 - **内核**：`mihomo` 以独立子进程运行，由主进程托管（启动、健康检查、崩溃重启、退出强杀）。
   内核随安装包分发，位置固定在应用资源目录，不需要用户配置路径。
@@ -68,9 +72,15 @@ Workbench 自己就是代理客户端，不依赖 FLClash / Clash Verge 在后�
   安装为 NSIS 覆盖升级，`userData`（配置、登录态）保留。
 - 更新源固定为 `e1ectronic-ovo/workbench`，配置在 `package.json` 的 `build.publish`。
   仓库必须是**公开**的，否则客户端拿不到 `latest.yml`。
-- **不会动用户数据**：安装目录（`%LOCALAPPDATA%\Programs\Workbench`）和数据目录（`%APPDATA%\Workbench`）
+- **不会动用户数据**：安装目录（`%LOCALAPPDATA%\Programs\Whaletide`）和数据目录（`%APPDATA%\Whaletide`）
   是两棵树，升级只替换前者。`nsis.deleteAppDataOnUninstall: false` 保证连卸载都不会删数据；
   升级时旧版本卸载器会先跑一遍，这个开关同样生效。
+- **改名后的数据落地**：`appId` 没有变，所以 NSIS 升级链路不断；但 `productName` 变了，
+  数据目录名会跟着变。启动时主进程会检查：若 `%APPDATA%\Workbench` 存在且非空、而新目录还不存在，
+  就直接把 `userData` 指回旧目录 —— **不复制、不搬移、不删除**，配置 / 登录态 / 代理订阅零风险。
+  全新安装的用户才会落到 `%APPDATA%\Whaletide`。
+- 改名这一次的安装目录也会变（从 `Programs\Workbench` 到 `Programs\Whaletide`），
+  首次升级后旧的安装目录和开始菜单项会残留一份，可以手动删除。
 
 > 分发注意：mihomo 与 FLClash 均为 GPL-3.0。这里以独立进程方式调用，未链接进应用代码，
 > 分发时请随包提供其许可证文本与源码获取方式。
@@ -134,7 +144,7 @@ npm run dev
 
 > 不要直接双击 `node_modules/electron/dist/electron.exe`——它拿不到应用路径，会报
 > `Unable to find Electron app at C:\WINDOWS\system32`。想要双击启动的产物，用 `npm run pack`
-> 生成 `dist/win-unpacked/Workbench.exe`，或 `npm run dist` 生成安装包 / 免安装单文件。
+> 生成 `dist/win-unpacked/Whaletide.exe`，或 `npm run dist` 生成安装包 / 免安装单文件。
 
 ## 脚本
 
@@ -149,7 +159,7 @@ npm run dev
 | `npm run typecheck` | 对 main / web 两份 tsconfig 做类型检查 |
 | `npm run lint` / `lint:fix` | ESLint 检查 / 自动修复 |
 | `npm run format` | Prettier 格式化 |
-| `npm run icons` | 由 `resources/icon.png` 生成各尺寸图标 |
+| `npm run icons` | 合成图标：`resources/icon-frame.svg` 底板 + 鲸鱼娘头像 → `icon.png` / `icon.ico` |
 | `npm run whale-assets` / `maid-assets` | 优化主题装饰资源 |
 
 ## 打包
@@ -157,10 +167,13 @@ npm run dev
 - 构建工具：`electron-vite`；分发打包：`electron-builder`（配置在 `package.json` 的 `build` 字段）。
 - 一条命令出包：`npm run dist`（会先跑 `typecheck` + 构建）。
 - Windows 产物（输出到 `dist/`）：
-  - `Workbench-<version>-x64.exe` — NSIS 安装包（非一键安装，可改安装目录，创建桌面/开始菜单快捷方式）
-  - `Workbench-<version>-portable.exe` — 免安装单文件，双击即用
+  - `Whaletide-<version>-x64.exe` — NSIS 安装包（非一键安装，可改安装目录，创建桌面/开始菜单快捷方式）
+  - `Whaletide-<version>-portable.exe` — 免安装单文件，双击即用
   - `win-unpacked/` — 未压缩目录，便于排查问题
-- `appId` 为 `com.workbench.app`，窗口与安装包图标使用 `resources/icon.ico`；图标等资源通过 `extraResources` 分发到 `process.resourcesPath`。
+- 显示名与文件名：界面、窗口标题、开始菜单快捷方式用中文名 **鲸汐**；`productName` 用 ASCII 的
+  `Whaletide`，避免安装包文件名、安装路径出现中文导致的编码问题。
+- `appId` 仍为 `com.workbench.app`（**不要改**：改了 NSIS 会当成本应用重新安装，旧安装不会升级）。
+  窗口与安装包图标使用 `resources/icon.ico`，资源通过 `extraResources` 分发到 `process.resourcesPath`。
 - 代理内核通过 `extraResources` 从 `resources/core` 分发到安装包的 `resources/core`，
   asar 里的可执行文件无法直接运行，所以必须放在包外。
 - `npm run pack` / `npm run dist` 会先跑 `scripts/fetch-core.mjs`：缺内核就按平台从 GitHub（带镜像回退）下载，

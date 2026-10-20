@@ -27,7 +27,7 @@ const isLoading = computed(
 const label = computed(() => {
   if (props.view === 'home') return '工作台'
   if (props.view === 'settings') return '设置'
-  if (!store.active) return 'Workbench'
+  if (!store.active) return '鲸汐'
   const s = store.activeState
   if (!s) return store.active.name
   if (s.loading) return '加载中'

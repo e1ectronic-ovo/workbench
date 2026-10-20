@@ -1,10 +1,10 @@
 {
   "name": "workbench",
-  "version": "0.2.2",
-  "description": "Personal workbench - desktop client with home dashboard and site modules",
+  "version": "0.3.0",
+  "description": "Whaletide (鲸汐) - personal desktop workbench with dashboard, site modules and built-in proxy",
   "private": true,
   "main": "out/main/index.js",
-  "author": "Workbench",
+  "author": "Whaletide",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
@@ -23,8 +23,8 @@
   },
   "build": {
     "appId": "com.workbench.app",
-    "productName": "Workbench",
-    "copyright": "Copyright © 2026 Workbench",
+    "productName": "Whaletide",
+    "copyright": "Copyright © 2026 Whaletide",
     "directories": {
       "output": "dist"
     },
@@ -38,7 +38,6 @@
         "from": "resources",
         "to": ".",
         "filter": [
-          "icon.svg",
           "icon.png",
           "icon.ico"
         ]
@@ -74,7 +73,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Workbench",
+      "shortcutName": "鲸汐",
       "deleteAppDataOnUninstall": false
     },
     "portable": {

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session } from 'electron'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs'
 import { extname, join } from 'path'
 import { pathToFileURL } from 'url'
 import { GUEST_PARTITION, GUEST_USER_AGENT } from '../common/guest-session'
@@ -14,6 +14,31 @@ import { ProxyService, registerProxyIpc } from './proxy'
 import { registerUpdateIpc, updateService } from './updater'
 
 const isDev = !app.isPackaged
+
+/**
+ * 产品在 0.3.0 从 Workbench 更名为 Whaletide，Electron 默认的数据目录会随之改变。
+ * 老用户直接沿用原来的目录——不复制、不搬移、不删除，配置 / 登录态 / 代理订阅零风险；
+ * 只有全新安装的用户才会落到新目录。
+ *
+ * 必须在任何 getPath('userData') 调用之前执行（会话分区、代理存储都依赖它）。
+ */
+function adoptLegacyUserData(): void {
+  const appData = app.getPath('appData')
+  const legacy = join(appData, 'Workbench')
+  const current = join(appData, 'Whaletide')
+  if (existsSync(current)) return
+  try {
+    if (existsSync(legacy) && readdirSync(legacy).length > 0) {
+      app.setPath('userData', legacy)
+      console.log('[whaletide] 沿用旧数据目录', legacy)
+    }
+  } catch (err) {
+    // 读不动就按新目录走，不能因为迁移把应用卡在启动阶段
+    console.warn('[whaletide] 旧数据目录检测失败', err)
+  }
+}
+
+adoptLegacyUserData()
 
 // 豆包等站点用跨子域 Cookie 做登录；关掉第三方存储隔离，会话才能在内嵌页里留下来。
 app.commandLine.appendSwitch('disable-features', 'ThirdPartyStoragePartitioning')
@@ -305,7 +330,7 @@ function registerIpc(): void {
   ipcMain.handle(
     'reminders:test',
     (_event, payload: { title?: string; body?: string }) => {
-      const title = payload?.title || 'Workbench'
+      const title = payload?.title || '鲸汐'
       const body = payload?.body || '通知测试成功'
       return showDesktopNotification(title, body)
     }

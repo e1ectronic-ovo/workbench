@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="icon frame">
+  <title>App icon frame</title>
+  <!--
+    应用图标底板（矢量）。
+    鲸鱼娘头像作为位图图层叠加在上层，见 scripts/generate-icons.mjs。
+    底色为深海蓝渐变 + 头像后方的天蓝光晕 + 四周暗角，保证浅色角色在深底上仍有剪影。
+  -->
+  <defs>
+    <linearGradient id="icon-bg" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#103654"/>
+      <stop offset=".52" stop-color="#0B2439"/>
+      <stop offset="1" stop-color="#061321"/>
+    </linearGradient>
+    <radialGradient id="icon-halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 461) scale(471)">
+      <stop stop-color="#4FB3EC" stop-opacity=".5"/>
+      <stop offset=".62" stop-color="#4FB3EC" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#4FB3EC" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="icon-vignette" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 451) scale(799)">
+      <stop offset=".55" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000814" stop-opacity=".42"/>
+    </radialGradient>
+  </defs>
+
+  <!-- macOS 圆角比例（1024 下 rx=229） -->
+  <rect width="1024" height="1024" rx="229" fill="url(#icon-bg)"/>
+  <rect width="1024" height="1024" rx="229" fill="url(#icon-halo)"/>
+  <rect width="1024" height="1024" rx="229" fill="url(#icon-vignette)"/>
+</svg>

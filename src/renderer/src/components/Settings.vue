@@ -320,7 +320,7 @@
             <label class="mac-row mac-toggle">
               <div class="mac-row__text">
                 <div class="mac-row__title">开机自动启动</div>
-                <div class="mac-row__sub">登录系统后自动打开 Workbench</div>
+                <div class="mac-row__sub">登录系统后自动打开鲸汐</div>
               </div>
               <input
                 type="checkbox"
@@ -567,7 +567,7 @@ const updateTitle = computed(() => {
     case 'error':
       return '检查更新失败'
     default:
-      return `Workbench v${appVersion.value || '—'}`
+      return `鲸汐 v${appVersion.value || '—'}`
   }
 })
 

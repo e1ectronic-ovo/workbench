@@ -140,7 +140,7 @@ class UpdateService {
       .showMessageBox(win, {
         type: 'info',
         title: '发现新版本',
-        message: `Workbench v${version} 已发布`,
+        message: `鲸汐 v${version} 已发布`,
         detail: `当前版本 v${app.getVersion()}。现在下载吗？下载完成后会提示重启安装。`,
         buttons: ['下载更新', '稍后'],
         defaultId: 0,

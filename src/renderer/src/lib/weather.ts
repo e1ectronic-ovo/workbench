@@ -277,7 +277,7 @@ async function reverseNominatim(lat: number, lon: number): Promise<string> {
     url.searchParams.set('accept-language', 'zh-CN')
     url.searchParams.set('zoom', '10')
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'Workbench/0.1.0 (desktop weather widget)' }
+      headers: { 'User-Agent': 'Whaletide/0.3.0 (desktop weather widget)' }
     })
     if (!res.ok) return ''
     const data = (await res.json()) as {
@@ -455,7 +455,7 @@ async function searchNominatim(query: string): Promise<WeatherPlace[]> {
     url.searchParams.set('addressdetails', '1')
     if (hasCjk(query)) url.searchParams.set('countrycodes', 'cn,hk,mo,tw')
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'Workbench/0.1.0 (desktop weather widget)' }
+      headers: { 'User-Agent': 'Whaletide/0.3.0 (desktop weather widget)' }
     })
     if (!res.ok) return []
     const data = (await res.json()) as Array<{
