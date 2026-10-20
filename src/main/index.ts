@@ -11,9 +11,23 @@ import {
   type ReminderPayload
 } from './reminders'
 import { ProxyService, registerProxyIpc } from './proxy'
+import { destroyTray, setupTray } from './tray'
 import { registerUpdateIpc, updateService } from './updater'
+import {
+  installCloseBehavior,
+  readCloseAction,
+  showMainWindow,
+  writeCloseAction
+} from './window-behavior'
+import type { CloseAction } from '../common/window'
 
 const isDev = !app.isPackaged
+/** 界面上显示的产品名，托盘菜单与关闭确认框都用它 */
+const PRODUCT_NAME = '鲸汐'
+
+let mainWindow: BrowserWindow | null = null
+/** before-quit 已经接管退出流程，关窗时不要再弹确认 */
+let quitting = false
 
 /**
  * 产品在 0.3.0 从 Workbench 更名为 Whaletide，Electron 默认的数据目录会随之改变。
@@ -57,21 +71,29 @@ if (!primaryInstance) {
 app.on('second-instance', (_event, argv) => {
   // 开机自启带 --hidden 的重复启动不应该把窗口弹出来
   if (argv.includes('--hidden')) return
-  const win = mainWindow
-  if (!win || win.isDestroyed()) {
-    createWindow()
-    return
-  }
-  if (win.isMinimized()) win.restore()
-  if (!win.isVisible()) win.show()
-  win.focus()
+  // 收进托盘之后再双击图标：唤起的是托盘里那个还在跑的实例
+  focusMainWindow()
 })
 
 // 豆包等站点用跨子域 Cookie 做登录；关掉第三方存储隔离，会话才能在内嵌页里留下来。
 app.commandLine.appendSwitch('disable-features', 'ThirdPartyStoragePartitioning')
 
-let mainWindow: BrowserWindow | null = null
 const proxyService = new ProxyService()
+
+/** 把主窗口唤回前台；还没创建（隐藏启动、托盘点击）时顺带创建 */
+function focusMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    // 隐藏启动时窗口不会自动显示，这里由托盘 / 重复启动显式唤出
+    showMainWindow(createWindow())
+    return
+  }
+  showMainWindow(mainWindow)
+}
+
+/** 完整退出：走 before-quit，保证系统代理被还原、内核被收掉 */
+function requestQuit(): void {
+  app.quit()
+}
 
 function loginItemPath(): string {
   return isDev ? process.execPath : app.getPath('exe')
@@ -130,6 +152,16 @@ function appIconPath(): string {
   return ico
 }
 
+/**
+ * 托盘图标。Windows 通知区在 100%~400% 缩放下取 16~48px，用单独的小尺寸 ico
+ * 才能各档都清晰；其他平台托盘尺寸不固定，退回主图标由系统缩放。
+ */
+function trayIconPath(): string {
+  if (process.platform !== 'win32') return appIconPath()
+  const ico = join(resourcesDir(), 'tray.ico')
+  return existsSync(ico) ? ico : appIconPath()
+}
+
 function iconsDir(): string {
   const dir = join(app.getPath('userData'), 'module-icons')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -167,7 +199,17 @@ function createWindow(): BrowserWindow {
   win.on('unmaximize', emitMaximized)
   win.webContents.on('did-finish-load', emitMaximized)
 
-  if (!shouldStartHidden()) {
+  // 关窗默认不杀进程：收进托盘或直接退出，由用户在设置里决定（默认是每次询问）
+  installCloseBehavior(win, {
+    isQuitting: () => quitting,
+    requestQuit,
+    productName: PRODUCT_NAME
+  })
+
+  // 开机自启 / 收进托盘时进程还在，但不该占着任务栏
+  const startHidden = shouldStartHidden()
+  if (startHidden) win.setSkipTaskbar(true)
+  if (!startHidden) {
     win.once('ready-to-show', () => win.show())
   }
 
@@ -345,6 +387,13 @@ function registerIpc(): void {
     return true
   })
 
+  ipcMain.handle('window:getCloseAction', () => readCloseAction())
+
+  ipcMain.handle('window:setCloseAction', (_event, action: CloseAction) => {
+    writeCloseAction(action)
+    return readCloseAction()
+  })
+
   ipcMain.handle('reminders:sync', (_event, payload: ReminderPayload) => {
     return scheduleReminder(payload)
   })
@@ -495,15 +544,19 @@ app.whenReady().then(() => {
   registerUpdateIpc()
   createWindow()
 
+  setupTray(trayIconPath(), {
+    show: focusMainWindow,
+    requestQuit,
+    productName: PRODUCT_NAME
+  })
+
   void proxyService.init()
   updateService.init()
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+  // macOS 点 Dock 图标：窗口收进托盘后要能再唤出来
+  app.on('activate', () => focusMainWindow())
 })
 
-let quitting = false
 app.on('before-quit', (event) => {
   // 没抢到锁的实例没启动过内核，直接退，别等那 2.5 秒兜底
   if (!primaryInstance) {
@@ -513,6 +566,7 @@ app.on('before-quit', (event) => {
   if (quitting) return
   quitting = true
   event.preventDefault()
+  destroyTray()
   // 退出前必须还原系统代理，否则内核没了整机就断网
   Promise.race([
     proxyService.shutdown(),

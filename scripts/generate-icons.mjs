@@ -21,6 +21,7 @@ const framePath = join(root, 'resources', 'icon-frame.svg')
 const mascotPath = join(root, 'src', 'renderer', 'src', 'assets', 'whale', 'logo.png')
 const pngPath = join(root, 'resources', 'icon.png')
 const icoPath = join(root, 'resources', 'icon.ico')
+const trayPath = join(root, 'resources', 'tray.ico')
 
 /** 主图画布尺寸，所有比例都以此为单位计算 */
 const MASTER = 1024
@@ -30,6 +31,11 @@ const MASCOT_RATIO = 0.8
 const MASCOT_SHIFT = 0.535
 /** ico 内嵌尺寸。256 是 electron-builder 的硬性要求，缺了会直接拒绝打包 */
 const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
+/**
+ * 托盘 ico 尺寸。Windows 通知区在 100%~400% 缩放下取 16/20/24/32/40/48，
+ * 再大就是浪费体积；单独出一份，Electron 即使取最大条目也只有 64，降采样到 16 依然清晰。
+ */
+const TRAY_SIZES = [16, 20, 24, 32, 40, 48, 64]
 
 /** 内容没变就不写盘：保持 mtime，避免 git 抖动与 electron-builder 无谓重打包 */
 function writeIfChanged(path, buf) {
@@ -46,19 +52,18 @@ function writeIfChanged(path, buf) {
  * 校验 ico 目录表：文件数、各尺寸是否齐全。
  * electron-builder 只认「包含 256×256 条目」的 ico，这里提前拦住，别等到打包阶段才报错。
  */
-function assertIco(buf) {
-  if (buf.length < 6) throw new Error('ico 头部不完整')
+function assertIco(buf, expected, label) {
+  if (buf.length < 6) throw new Error(`${label} 头部不完整`)
   const count = buf.readUInt16LE(4)
   const entries = []
   for (let i = 0; i < count; i += 1) {
     const off = 6 + i * 16
-    if (off + 16 > buf.length) throw new Error('ico 目录表被截断')
+    if (off + 16 > buf.length) throw new Error(`${label} 目录表被截断`)
     // 宽高各占 1 字节，0 表示 256
     entries.push({ width: buf[off] || 256, height: buf[off + 1] || 256 })
   }
-  const missing = ICO_SIZES.filter((s) => !entries.some((e) => e.width === s && e.height === s))
-  if (missing.length) throw new Error(`ico 缺少尺寸：${missing.join(', ')}`)
-  if (!entries.some((e) => e.width === 256)) throw new Error('ico 缺少 256×256，electron-builder 会拒绝打包')
+  const missing = expected.filter((s) => !entries.some((e) => e.width === s && e.height === s))
+  if (missing.length) throw new Error(`${label} 缺少尺寸：${missing.join(', ')}`)
   return entries.map((e) => e.width)
 }
 
@@ -122,12 +127,20 @@ async function main() {
     ICO_SIZES.map((s) => sharp(master).resize(s, s, { kernel: 'lanczos3' }).png().toBuffer())
   )
   const ico = await pngToIco(pngBuffers)
-  const icoSizes = assertIco(ico)
+  const icoSizes = assertIco(ico, ICO_SIZES, 'icon.ico')
   const icoChanged = writeIfChanged(icoPath, ico)
+
+  const trayBuffers = await Promise.all(
+    TRAY_SIZES.map((s) => sharp(master).resize(s, s, { kernel: 'lanczos3' }).png().toBuffer())
+  )
+  const tray = await pngToIco(trayBuffers)
+  const traySizes = assertIco(tray, TRAY_SIZES, 'tray.ico')
+  const trayChanged = writeIfChanged(trayPath, tray)
 
   const tag = (changed) => (changed ? '已更新' : '未变化')
   console.log(`icon.png  512×512            ${tag(pngChanged)}`)
   console.log(`icon.ico  ${icoSizes.join('/')}  ${tag(icoChanged)}`)
+  console.log(`tray.ico  ${traySizes.join('/')}      ${tag(trayChanged)}`)
 }
 
 main().catch((err) => {

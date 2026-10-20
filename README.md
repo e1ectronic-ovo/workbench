@@ -27,6 +27,9 @@
 - **首页仪表盘**：可拖拽、可开关的组件网格（下班倒计时 / 天气 / 便签 / 网络代理），右键空白处打开布局设置。
 - **模块视图**：每个模块在主区域嵌入对应网页，带独立的工具栏（后退 / 前进 / 刷新）、多标签页与地址栏。
 - **设置页**：模块管理、外观、通用。
+- **单实例**：重复启动不会开出第二个窗口，而是把已有窗口唤到前台；开机自启带 `--hidden` 的
+  重复启动静默退出，不弹窗。这一点对内置代理是必需的——两个实例会各自拉起一个 mihomo 抢同一组端口、
+  互相覆盖系统代理与注册表备份。
 
 ## 功能
 
@@ -43,6 +46,15 @@
 - **便签**：本地备忘，关掉网页也还在。
 - **网络代理**：内置 mihomo 内核的开关、当前节点、上下行速率曲线与模式切换。
 - 布局（列数 / 间距 / 面板透明度 / 位置 / 跨度）全部可配置并持久化。
+
+### 托盘与窗口
+- **任务栏托盘**：右键出菜单（打开主界面 / 退出），左键直接开窗。托盘必须存在——
+  关掉窗口后代理内核还在后台跑着，没有托盘用户就找不到「彻底退出」的入口了。
+  Windows 11 默认把新图标收进通知区溢出栏（^），需要在任务栏设置里手动允许显示。
+- **关窗不退出**：点关闭按钮时默认弹一次确认框（收进托盘 / 退出程序），可勾选「记住我的选择」；
+  之后可以在 设置 → 通用 → 窗口 里改。收进托盘后进程继续运行，代理与登录状态都保留。
+- **重复启动唤起**：再次双击图标（或托盘）会把已隐藏的窗口唤回前台，不会多开进程，
+  也就不会出现两个 mihomo 抢端口、互相覆盖系统代理的情况。
 
 ### 网络代理
 
@@ -169,11 +181,14 @@ npm run dev
 ```
 resources/icon-frame.svg   矢量底板（深海蓝渐变 / 天蓝光晕 / 暗角）
         +                                    ──► 1024 主图 ──► resources/icon.png (512)
-src/renderer/src/assets/whale/logo.png   鲸鱼娘头像        └──► resources/icon.ico (16~256)
+src/renderer/src/assets/whale/logo.png   鲸鱼娘头像        ├──► resources/icon.ico (16~256)
+                                                          └──► resources/tray.ico (16~64)
 ```
 
 - 生成脚本 `scripts/generate-icons.mjs`：头像 lanczos3 放大 + 轻度锐化，按 alpha 生成轮廓投影，
   与底板合成；ico 各尺寸**都由 1024 主图单独降采样**，不逐级缩放。
+- `tray.ico` 只保留 16~64px（Windows 通知区在 100%~400% 缩放下取 16/20/24/32/40/48），
+  单独一份是为了让托盘图标各档缩放都清晰，不用把 256px 的大图塞进通知区再缩小。
 - 已接入 `npm run build`，因此 `npm run pack` / `npm run dist` / CI 出包的图标**永远与源图一致**，
   不存在“改了头像忘了重新生成”的漏项。
 - 产物是确定性的，且只在内容变化时写盘（不刷 mtime、不污染 git），重复构建不会触发多余的重新打包。
@@ -192,6 +207,16 @@ src/renderer/src/assets/whale/logo.png   鲸鱼娘头像        └──► res
   - `win-unpacked/` — 未压缩目录，便于排查问题
 - 显示名与文件名：界面、窗口标题、开始菜单快捷方式用中文名 **鲸汐**；`productName` 用 ASCII 的
   `Whaletide`，避免安装包文件名、安装路径出现中文导致的编码问题。
+- 安装向导在「选择安装位置」之后有一页「选择附加任务」，可勾选**是否创建桌面快捷方式**（默认勾选）。
+  - 实现见 `build/installer.nsh`（electron-builder 默认加载该路径）。
+  - 采取「先建后删」：`addDesktopLink` 照常建链，`customInstall` 在用户取消勾选时才删除，
+    这样卸载器的 `$oldDesktopLink` 清理逻辑完全不受影响，不会留下删不掉的残留快捷方式。
+  - 升级安装（`${isUpdated}`）会跳过这一页并保持现状，既不打搅用户，也不会把用户主动删掉的快捷方式又建回来。
+  - **两个坑**：① `installer.nsh` 必须带 UTF-8 BOM——electron-builder 会把它 `!include` 到
+    `installer.nsi` 模板最前面（在 `-INPUTCHARSET UTF8` 生效范围之外），没 BOM 中文会被按 ANSI 读出乱码；
+    ② MUI2.nsh 是模板第 9 行才包含的，脚本里要在页头用 `MUI_HEADER_TEXT` 宏就得自己先
+    `!include "MUI2.nsh"`（MUI2 有包含守卫，重复 include 无害）。这两个问题本地用
+    electron-builder 缓存里的 `makensis.exe -INPUTCHARSET UTF8` 单独编译脚本就能复现。
 - `appId` 仍为 `com.workbench.app`（**不要改**：改了 NSIS 会当成本应用重新安装，旧安装不会升级）。
   窗口与安装包图标使用 `resources/icon.ico`，资源通过 `extraResources` 分发到 `process.resourcesPath`。
 - 代理内核通过 `extraResources` 从 `resources/core` 分发到安装包的 `resources/core`，

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, shell } from 'electron'
+import type { CloseAction } from '../common/window'
 import type { UpdateState } from '../common/update'
 import type {
   ProxyActionResult,
@@ -56,6 +57,11 @@ const api = {
   maximizeWindow: () => ipcRenderer.invoke('window:maximize') as Promise<boolean>,
 
   closeWindow: () => ipcRenderer.invoke('window:close') as Promise<boolean>,
+
+  getCloseAction: () => ipcRenderer.invoke('window:getCloseAction') as Promise<CloseAction>,
+
+  setCloseAction: (action: CloseAction) =>
+    ipcRenderer.invoke('window:setCloseAction', action) as Promise<CloseAction>,
 
   onMaximized: (cb: (maximized: boolean) => void) => {
     const listener = (_: Electron.IpcRendererEvent, maximized: boolean) => cb(maximized)

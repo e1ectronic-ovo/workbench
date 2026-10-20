@@ -346,6 +346,34 @@
         </section>
 
         <section class="mac-section">
+          <p class="mac-section__label">窗口</p>
+          <div class="mac-group">
+            <div class="mac-row">
+              <div class="mac-row__text">
+                <div class="mac-row__title">点击关闭按钮时</div>
+                <div class="mac-row__sub">
+                  收进托盘后程序继续在后台运行，可从任务栏托盘打开
+                </div>
+              </div>
+              <div class="mac-row__aside">
+                <div class="mac-segmented" role="group" aria-label="关闭窗口时的行为">
+                  <button
+                    v-for="o in closeOptions"
+                    :key="o.id"
+                    type="button"
+                    class="mac-segmented__item"
+                    :class="{ 'is-on': closeAction === o.id }"
+                    @click="setCloseAction(o.id)"
+                  >
+                    {{ o.label }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="mac-section">
           <p class="mac-section__label">版本</p>
           <div class="mac-group">
             <div class="mac-row">
@@ -497,6 +525,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { CLOSE_ACTION_LABELS, type CloseAction } from '../../../common/window'
 import { PRESET_COLORS, type ModuleConfig } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
 import { useProxyStore } from '../stores/proxy'
@@ -530,6 +559,26 @@ const tab = ref<(typeof tabs)[number]['id']>('modules')
 const proxy = useProxyStore()
 
 const proxySettings = computed(() => proxy.snapshot?.settings ?? defaultProxySettings())
+
+/* ── 关窗行为 ── */
+const closeOptions: { id: CloseAction; label: string }[] = [
+  { id: 'ask', label: CLOSE_ACTION_LABELS.ask },
+  { id: 'tray', label: CLOSE_ACTION_LABELS.tray },
+  { id: 'quit', label: CLOSE_ACTION_LABELS.quit }
+]
+const closeAction = ref<CloseAction>('ask')
+
+async function setCloseAction(action: CloseAction) {
+  // 先本地更新，点击即时反馈，不用等主进程往返
+  closeAction.value = action
+  const saved = await window.workbench?.setCloseAction(action)
+  if (saved) closeAction.value = saved
+}
+
+onMounted(async () => {
+  const saved = await window.workbench?.getCloseAction()
+  if (saved) closeAction.value = saved
+})
 
 /* ── 应用更新 ── */
 const updateState = ref<UpdateState>(idleUpdateState())
