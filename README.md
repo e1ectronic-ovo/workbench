@@ -197,6 +197,8 @@ git push origin v0.2.0
 - 本地发布：先 `npm run dist`，再 `gh release create vX.Y.Z dist/*.exe dist/latest.yml --latest`。
   不要用 electron-builder 的 `--publish`：多个 target 并发上传会给同一个 tag 建出重复 Release，
   `releases/latest` 可能指向只有 blockmap 的那份，客户端就拿不到 `latest.yml` 了。
+  为此 `npm run dist` 里显式带了 `--publish never` —— 否则在 tag 上构建时 electron-builder 会自动
+  尝试上传，因为缺 `GH_TOKEN` 直接构建失败。
 - 客户端靠 Release 里的 `latest.yml` 判断版本，因此**仓库必须是公开的**，Release 也要是正式版而不是 draft
   （`build.publish.releaseType` 已设为 `release`）。
 

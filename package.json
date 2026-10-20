@@ -11,15 +11,14 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "pack": "node scripts/fetch-core.mjs && npm run build && electron-builder --dir",
-    "dist": "node scripts/fetch-core.mjs && npm run build && electron-builder --win",
+    "dist": "node scripts/fetch-core.mjs && npm run build && electron-builder --win --publish never",
     "core": "node scripts/fetch-core.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "icons": "node scripts/generate-icons.mjs",
     "whale-assets": "node scripts/optimize-whale-assets.mjs",
-    "maid-assets": "node scripts/fetch-maid-atelier-assets.mjs",
-    "release": "npm run dist -- --publish always"
+    "maid-assets": "node scripts/fetch-maid-atelier-assets.mjs"
   },
   "build": {
     "appId": "com.workbench.app",
