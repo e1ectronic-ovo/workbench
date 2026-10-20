@@ -12,9 +12,9 @@
             <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
           </svg>
         </button>
-        <button type="button" class="mac-icon-btn" @click="reload" title="刷新">
+        <button type="button" class="mac-icon-btn" @click="goHome" :title="`回到首页 (${props.module.url})`">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" />
+            <path d="M4 11.2 12 4.5l8 6.7" /><path d="M7 10.5V19h10v-8.5" />
           </svg>
         </button>
       </div>
@@ -43,18 +43,64 @@
         @click="selectTab(tab.id)"
       >
         <span class="tab__label">{{ tabLabel(tab) }}</span>
-        <button
-          v-if="tabs.length > 1"
-          type="button"
-          class="tab__close"
-          title="关闭标签"
-          aria-label="关闭标签"
-          @click.stop="closeTab(tab.id)"
-        >
-          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 6l12 12M18 6 6 18" />
-          </svg>
-        </button>
+
+        <span class="tab__actions">
+          <button
+            v-if="tab.audible || tab.muted"
+            type="button"
+            class="tab__btn"
+            :class="{ 'is-on': tab.audible && !tab.muted, 'is-muted': tab.muted }"
+            :title="tab.muted ? '取消静音' : '静音此标签'"
+            :aria-label="tab.muted ? '取消静音' : '静音此标签'"
+            @click.stop="toggleMute(tab.id)"
+          >
+            <svg v-if="tab.muted" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 5 6 9H3v6h3l5 4V5z" />
+              <path d="m17 9 4 5M21 9l-4 5" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 5 6 9H3v6h3l5 4V5z" />
+              <path d="M16 9a4 4 0 0 1 0 6" />
+            </svg>
+          </button>
+
+          <button
+            v-if="tab.id === activeTabId"
+            type="button"
+            class="tab__btn"
+            :class="{ 'is-on': tab.loading }"
+            :title="tab.loading ? '停止加载' : '刷新此标签 (Ctrl+R)'"
+            :aria-label="tab.loading ? '停止加载' : '刷新此标签'"
+            @click.stop="reloadTab(tab.id)"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              :class="{ 'is-spin': tab.loading }"
+            >
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" />
+            </svg>
+          </button>
+
+          <button
+            v-if="tabs.length > 1"
+            type="button"
+            class="tab__close"
+            title="关闭标签"
+            aria-label="关闭标签"
+            @click.stop="closeTab(tab.id)"
+          >
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </span>
       </button>
     </div>
 
@@ -109,12 +155,17 @@ interface WebviewEl extends HTMLElement {
   goBack(): void
   goForward(): void
   reload(): void
+  stop(): void
   loadURL(url: string): Promise<void>
   isLoadingMainFrame?(): boolean
+  isCurrentlyAudible?(): boolean
+  setAudioMuted?(muted: boolean): void
 }
 
 const props = defineProps<{
   module: ModuleConfig
+  /** 该模块是否为当前可见模块（多模块常驻时用于隔离快捷键与状态同步） */
+  active: boolean
 }>()
 
 const store = useModulesStore()
@@ -150,11 +201,21 @@ function patchTab(tabId: string, patch: Partial<PageTab>) {
 
 function syncModuleState() {
   const tab = activeTab.value
-  if (!tab) return
+  if (!tab || !props.active) return
   store.update(props.module.id, {
     url: tab.url,
     title: tab.title,
-    loading: tab.loading
+    loading: tab.loading,
+    audible: tabs.value.some((t) => t.audible),
+    muted: tabs.value.some((t) => t.muted)
+  })
+}
+
+/** 声音状态无论模块是否可见都要同步，侧栏需要据此显示后台发声提示 */
+function syncModuleAudio() {
+  store.update(props.module.id, {
+    audible: tabs.value.some((t) => t.audible),
+    muted: tabs.value.some((t) => t.muted)
   })
 }
 
@@ -178,6 +239,19 @@ function syncNav(el?: WebviewEl) {
   }
 }
 
+function syncAudio(tabId: string, el: WebviewEl) {
+  let audible = false
+  try {
+    audible = el.isCurrentlyAudible?.() === true
+  } catch {
+    audible = false
+  }
+  const tab = tabs.value.find((t) => t.id === tabId)
+  if (tab && tab.audible === audible) return
+  patchTab(tabId, { audible })
+  syncModuleAudio()
+}
+
 function attachWebview(tabId: string, el: WebviewEl) {
   if (attachedTabs.has(tabId)) return
   attachedTabs.add(tabId)
@@ -196,7 +270,16 @@ function attachWebview(tabId: string, el: WebviewEl) {
       syncNav(el)
       syncModuleState()
     }
+    syncAudio(tabId, el)
   })
+
+  // 发声状态：媒体开始/暂停时同步，延后复查一次以避开事件早于状态更新的时序差
+  const onMedia = () => {
+    syncAudio(tabId, el)
+    window.setTimeout(() => syncAudio(tabId, el), 400)
+  }
+  el.addEventListener('media-started-playing', onMedia)
+  el.addEventListener('media-paused', onMedia)
   el.addEventListener('page-title-updated', (e: Event) => {
     const t = (e as unknown as { title?: string }).title
     if (!t) return
@@ -270,6 +353,7 @@ function closeTab(id: string) {
       syncModuleState()
     })
   }
+  syncModuleAudio()
 }
 
 function back() {
@@ -278,8 +362,53 @@ function back() {
 function forward() {
   activeWv()?.goForward()
 }
-function reload() {
-  activeWv()?.reload()
+
+/** 刷新指定标签；加载中时改为停止 */
+function reloadTab(tabId = activeTabId.value) {
+  const el = webviewRefs.get(tabId)
+  if (!el) return
+  const tab = tabs.value.find((t) => t.id === tabId)
+  try {
+    if (tab?.loading) el.stop()
+    else el.reload()
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 该标签单独静音 / 取消静音（后台模块的声音也能从这里关掉） */
+function toggleMute(tabId: string) {
+  const tab = tabs.value.find((t) => t.id === tabId)
+  if (!tab) return
+  const next = !tab.muted
+  const el = webviewRefs.get(tabId)
+  try {
+    el?.setAudioMuted?.(next)
+  } catch {
+    /* ignore */
+  }
+  patchTab(tabId, { muted: next, audible: next ? false : tab.audible })
+  syncModuleAudio()
+  if (!next) {
+    window.setTimeout(() => {
+      const cur = webviewRefs.get(tabId)
+      if (cur) syncAudio(tabId, cur)
+    }, 400)
+  }
+}
+
+/** 回到该网站配置的首页地址 */
+function goHome() {
+  const url = props.module.url
+  if (!url) return
+  patchTab(activeTabId.value, { url })
+  store.setUrl(props.module.id, url)
+  try {
+    activeWv()?.loadURL(url)
+  } catch {
+    /* ignore */
+  }
+  syncModuleState()
 }
 
 function toggleUrlBar() {
@@ -304,6 +433,7 @@ function onSubmit() {
 }
 
 function onKey(e: KeyboardEvent) {
+  if (!props.active) return
   const ctrl = e.ctrlKey || e.metaKey
   if (!ctrl) return
   if (e.key.toLowerCase() === 'l') {
@@ -312,7 +442,7 @@ function onKey(e: KeyboardEvent) {
   }
   if (e.key.toLowerCase() === 'r') {
     e.preventDefault()
-    reload()
+    reloadTab()
   }
 }
 
@@ -321,11 +451,21 @@ watch(activeTabId, () => {
   syncModuleState()
 })
 
+// 从其它模块切回来时，同步导航按钮与状态栏
+watch(
+  () => props.active,
+  (active) => {
+    if (!active) return
+    syncNav()
+    syncModuleState()
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   window.addEventListener('keydown', onKey)
-  syncModuleState()
   offOpenTab = window.workbench.onGuestOpenTab((payload) => {
-    if (store.activeId !== props.module.id) return
+    if (!props.active) return
     openTab(payload.url)
   })
 })
@@ -377,7 +517,7 @@ defineExpose({ webviewEl: activeWv })
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 200px;
+  max-width: 220px;
   height: 28px;
   padding: 0 10px;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
@@ -409,6 +549,14 @@ defineExpose({ webviewEl: activeWv })
   white-space: nowrap;
 }
 
+.tab__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.tab__btn,
 .tab__close {
   width: 16px;
   height: 16px;
@@ -419,17 +567,42 @@ defineExpose({ webviewEl: activeWv })
   border-radius: 4px;
   color: var(--text-muted);
   opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 
+/* 发声 / 静音标记常态可见：否则后台模块在发声时无从下手 */
+.tab__btn.is-on,
+.tab__btn.is-muted,
+.tab.active .tab__btn,
+.tab__btn:focus-visible {
+  opacity: 1;
+}
+
+.tab__btn.is-on {
+  color: var(--accent);
+}
+
+.tab:hover .tab__btn,
 .tab:hover .tab__close,
 .tab.active .tab__close {
   opacity: 1;
 }
 
+.tab__btn:hover,
 .tab__close:hover {
   background: var(--surface-active);
   color: var(--text);
+}
+
+.is-spin {
+  animation: tab-spin 0.9s linear infinite;
+}
+
+@keyframes tab-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .url-toggle.on {

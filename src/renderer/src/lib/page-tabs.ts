@@ -6,6 +6,10 @@ export interface PageTab {
   bootUrl: string
   title: string
   loading: boolean
+  /** 是否正在播放声音 */
+  audible: boolean
+  /** 是否被手动静音（静音后即使不再发声也保留标记） */
+  muted: boolean
 }
 
 export function createPageTab(url: string, title = '新标签页'): PageTab {
@@ -15,7 +19,9 @@ export function createPageTab(url: string, title = '新标签页'): PageTab {
     url: bootUrl,
     bootUrl,
     title,
-    loading: true
+    loading: true,
+    audible: false,
+    muted: false
   }
 }
 

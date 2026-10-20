@@ -32,6 +32,21 @@
           <ModuleIcon :module="m" variant="nav" />
         </span>
         <span v-if="showLabels" class="nav-label">{{ m.name }}</span>
+        <span
+          v-if="audioBadges[m.id]"
+          class="nav-audio"
+          :class="{ 'is-muted': audioBadges[m.id] === 'muted' }"
+          :title="audioBadges[m.id] === 'muted' ? `${m.name}：已静音` : `${m.name}：正在播放声音`"
+        >
+          <svg v-if="audioBadges[m.id] === 'muted'" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5 6 9H3v6h3l5 4V5z" />
+            <path d="m17 9 4 5M21 9l-4 5" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5 6 9H3v6h3l5 4V5z" />
+            <path d="M16 9a4 4 0 0 1 0 6" />
+          </svg>
+        </span>
       </button>
 
     </nav>
@@ -58,10 +73,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ModuleConfig } from '../modules/registry'
+import { useModulesStore } from '../stores/modules'
 import { useSettingsStore } from '../stores/settings'
 import ModuleIcon from './ModuleIcon.vue'
 
-defineProps<{
+const props = defineProps<{
   modules: ModuleConfig[]
   activeId: string
   view: 'home' | 'module' | 'settings'
@@ -74,6 +90,19 @@ defineEmits<{
 }>()
 
 const settings = useSettingsStore()
+const modulesStore = useModulesStore()
+
+/** 后台模块发声时的角标：不看标签栏也能知道是谁在响 */
+const audioBadges = computed(() => {
+  const out: Record<string, 'playing' | 'muted'> = {}
+  for (const m of props.modules) {
+    const s = modulesStore.states[m.id]
+    if (!s) continue
+    if (s.muted) out[m.id] = 'muted'
+    else if (s.audible) out[m.id] = 'playing'
+  }
+  return out
+})
 
 const showLabels = computed(
   () =>
@@ -161,6 +190,19 @@ const showLabels = computed(
 
 .nav-item.active .nav-icon {
   color: var(--text);
+}
+
+.nav-audio {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.nav-audio.is-muted {
+  color: var(--text-muted);
 }
 
 .nav-label {
