@@ -12,57 +12,11 @@ export interface ModuleConfig {
   order?: number
 }
 
-/** 出厂默认模块；用户可在设置里增删改，改动会持久化到本地 */
-export const DEFAULT_MODULES: ModuleConfig[] = [
-  {
-    id: 'xiaohongshu',
-    name: '小红书',
-    url: 'https://www.xiaohongshu.com',
-    glyph: '小',
-    color: '#FE2C55',
-    order: 1
-  },
-  {
-    id: 'bilibili',
-    name: 'B 站',
-    url: 'https://www.bilibili.com',
-    glyph: 'B',
-    color: '#FB7299',
-    order: 2
-  },
-  {
-    id: 'weibo',
-    name: '微博',
-    url: 'https://weibo.com',
-    glyph: '微',
-    color: '#E6162D',
-    order: 3
-  },
-  {
-    id: 'douyin',
-    name: '抖音',
-    url: 'https://www.douyin.com',
-    glyph: '抖',
-    color: '#FF0050',
-    order: 4
-  },
-  {
-    id: 'zhihu',
-    name: '知乎',
-    url: 'https://www.zhihu.com',
-    glyph: '知',
-    color: '#0084FF',
-    order: 5
-  },
-  {
-    id: 'github',
-    name: 'GitHub',
-    url: 'https://github.com',
-    glyph: 'G',
-    color: '#6EE7B7',
-    order: 6
-  }
-]
+/**
+ * 出厂不预置任何网站：侧栏默认是空的，站点由用户自己添加。
+ * 老版本内置过的几个站点会在模块种子升级时被移除。
+ */
+export const DEFAULT_MODULES: ModuleConfig[] = []
 
 export const PRESET_COLORS = [
   '#FE2C55',

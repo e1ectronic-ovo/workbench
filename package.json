@@ -1,6 +1,6 @@
 {
   "name": "workbench",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Personal workbench - desktop client with home dashboard and site modules",
   "private": true,
   "main": "out/main/index.js",
