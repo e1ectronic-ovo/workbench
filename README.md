@@ -212,11 +212,17 @@ src/renderer/src/assets/whale/logo.png   鲸鱼娘头像        ├──► res
   - 采取「先建后删」：`addDesktopLink` 照常建链，`customInstall` 在用户取消勾选时才删除，
     这样卸载器的 `$oldDesktopLink` 清理逻辑完全不受影响，不会留下删不掉的残留快捷方式。
   - 升级安装（`${isUpdated}`）会跳过这一页并保持现状，既不打搅用户，也不会把用户主动删掉的快捷方式又建回来。
-  - **两个坑**：① `installer.nsh` 必须带 UTF-8 BOM——electron-builder 会把它 `!include` 到
-    `installer.nsi` 模板最前面（在 `-INPUTCHARSET UTF8` 生效范围之外），没 BOM 中文会被按 ANSI 读出乱码；
-    ② MUI2.nsh 是模板第 9 行才包含的，脚本里要在页头用 `MUI_HEADER_TEXT` 宏就得自己先
-    `!include "MUI2.nsh"`（MUI2 有包含守卫，重复 include 无害）。这两个问题本地用
-    electron-builder 缓存里的 `makensis.exe -INPUTCHARSET UTF8` 单独编译脚本就能复现。
+  - **四个坑**（都已在 `build/installer.nsh` 里处理，改脚本前先看这里）：
+    ① 文件必须带 **UTF-8 BOM**——自定义 include 不吃 `-INPUTCHARSET UTF8`，没 BOM 中文会被按 ANSI 读成乱码；
+    ② MUI2.nsh 要自己先 include（MUI2 有包含守卫，重复无害），因为自定义脚本被拼到 `installer.nsi` 模板最前面，
+    早于模板第 9 行的 `MUI2.nsh`，页头要用的 `MUI_HEADER_TEXT` 宏当时还不存在；
+    ③ 自定义 include 同样排在 `!addplugindir` **之前**，`${isUpdated}` 会展开成 StdUtils 插件调用而直接报
+    "Plugin not found"——所以页面函数必须放进 `customHeader` 宏（它在插件目录注册之后才被插入）；
+    ④ electron-builder 给 makensis 传 `-WX`（警告即错误），卸载器编译（`BUILD_UNINSTALLER`）时
+    安装器专用的变量/函数未引用会以 warning 形式出现然后失败，所以这些内容要包 `!ifndef BUILD_UNINSTALLER`。
+    另外两个排查提示：makensis 失败时 electron-builder 会把子进程输出吞进异常对象，CI 日志只看得到
+    "Processing script file" 一行；本地用 electron-builder 缓存里的
+    `makensis.exe -WX -INPUTCHARSET UTF8`（再加 `-DBUILD_UNINSTALLER` 分别验证两个阶段）单独编译脚本即可复现。
 - `appId` 仍为 `com.workbench.app`（**不要改**：改了 NSIS 会当成本应用重新安装，旧安装不会升级）。
   窗口与安装包图标使用 `resources/icon.ico`，资源通过 `extraResources` 分发到 `process.resourcesPath`。
 - 代理内核通过 `extraResources` 从 `resources/core` 分发到安装包的 `resources/core`，

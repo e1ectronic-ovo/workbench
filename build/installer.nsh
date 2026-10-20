@@ -20,13 +20,20 @@
 !include "LogicLib.nsh"
 !include "nsDialogs.nsh"
 
+!ifndef BUILD_UNINSTALLER
 Var customDesktopCheckbox
 Var customCreateDesktopShortcut
+!endif
 
 !macro customPageAfterChangeDir
   Page custom customDesktopPageCreate customDesktopPageLeave
 !macroend
 
+; 函数定义必须放在 customHeader 里：electron-builder 生成的脚本会把自定义 include
+; 排在 !addplugindir 之前，而 ${isUpdated} 会展开成 StdUtils 插件调用；直接在这里
+; 展开会报 “Plugin not found”。customHeader 在插件目录注册之后才插入。
+!macro customHeader
+!ifndef BUILD_UNINSTALLER
 Function customDesktopPageCreate
   ${if} ${isUpdated}
     Abort
@@ -56,6 +63,8 @@ Function customDesktopPageLeave
     StrCpy $customCreateDesktopShortcut "false"
   ${endif}
 FunctionEnd
+!endif
+!macroend
 
 !macro customInstall
   ${if} $customCreateDesktopShortcut == "false"
