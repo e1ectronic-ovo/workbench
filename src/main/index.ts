@@ -10,6 +10,8 @@ import {
   showDesktopNotification,
   type ReminderPayload
 } from './reminders'
+import { ProxyService, registerProxyIpc } from './proxy'
+import { registerUpdateIpc, updateService } from './updater'
 
 const isDev = !app.isPackaged
 
@@ -17,6 +19,7 @@ const isDev = !app.isPackaged
 app.commandLine.appendSwitch('disable-features', 'ThirdPartyStoragePartitioning')
 
 let mainWindow: BrowserWindow | null = null
+const proxyService = new ProxyService()
 
 function loginItemPath(): string {
   return isDev ? process.execPath : app.getPath('exe')
@@ -433,11 +436,28 @@ app.whenReady().then(() => {
   })
 
   registerIpc()
+  registerProxyIpc(proxyService)
+  registerUpdateIpc()
   createWindow()
+
+  void proxyService.init()
+  updateService.init()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+let quitting = false
+app.on('before-quit', (event) => {
+  if (quitting) return
+  quitting = true
+  event.preventDefault()
+  // 退出前必须还原系统代理，否则内核没了整机就断网
+  Promise.race([
+    proxyService.shutdown(),
+    new Promise((resolve) => setTimeout(resolve, 2500))
+  ]).finally(() => app.exit(0))
 })
 
 app.on('window-all-closed', () => {

@@ -1,3 +1,14 @@
+import type {
+  ProxyActionResult,
+  ProxyGroup,
+  ProxyMode,
+  ProxyProfile,
+  ProxySettings,
+  ProxySnapshot,
+  ProxyTestProgress
+} from '../../../common/proxy'
+import type { UpdateState } from '../../../common/update'
+
 export type WorkbenchPlatform =
   | 'win32'
   | 'darwin'
@@ -49,6 +60,42 @@ export interface WorkbenchAPI {
   onReminderFired: (cb: (payload: { dateKey: string }) => void) => () => void
   onGuestOpenTab: (cb: (payload: { url: string }) => void) => () => void
   openExternal: (url: string) => Promise<void>
+
+  update: {
+    state: () => Promise<UpdateState>
+    check: () => Promise<UpdateState>
+    download: () => Promise<UpdateState>
+    install: () => Promise<boolean>
+    onChange: (cb: (state: UpdateState) => void) => () => void
+  }
+
+  proxy: {
+    snapshot: () => Promise<ProxySnapshot>
+    groups: () => Promise<ProxyGroup[]>
+    logs: () => Promise<string[]>
+    start: () => Promise<ProxyActionResult>
+    startCore: () => Promise<ProxyActionResult>
+    toggleProxy: (enabled?: boolean) => Promise<ProxyActionResult>
+    stop: () => Promise<ProxyActionResult>
+    restart: () => Promise<ProxyActionResult>
+    select: (group: string, node: string) => Promise<ProxyActionResult>
+    testDelay: (node: string) => Promise<number>
+    testGroup: (group: string) => Promise<ProxyGroup | null>
+    onTestProgress: (cb: (payload: ProxyTestProgress) => void) => () => void
+    setMode: (mode: ProxyMode) => Promise<ProxyActionResult>
+    patchSettings: (patch: Partial<ProxySettings>) => Promise<ProxySnapshot>
+    setSystemProxy: (enabled: boolean) => Promise<ProxyActionResult>
+    importProfile: () => Promise<ProxyActionResult & { profile?: ProxyProfile }>
+    setSubscription: (
+      url: string,
+      name?: string
+    ) => Promise<ProxyActionResult & { profile?: ProxyProfile }>
+    updateSubscription: () => Promise<ProxyActionResult & { profile?: ProxyProfile }>
+    switchProfile: (id: string) => Promise<ProxyActionResult>
+    removeProfile: (id: string) => Promise<ProxyActionResult>
+    renameProfile: (id: string, name: string) => Promise<ProxyActionResult>
+    onState: (cb: () => void) => () => void
+  }
 }
 
 declare global {

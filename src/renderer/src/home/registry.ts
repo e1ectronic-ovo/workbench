@@ -1,9 +1,10 @@
 import type { Component } from 'vue'
 import HomeAttendance from '../components/HomeAttendance.vue'
 import HomeNotes from '../components/HomeNotes.vue'
+import HomeProxy from '../components/HomeProxy.vue'
 import HomeWeather from '../components/HomeWeather.vue'
 
-export type HomeWidgetId = 'attendance' | 'weather' | 'notes'
+export type HomeWidgetId = 'attendance' | 'weather' | 'notes' | 'proxy'
 
 export interface HomeWidgetGridDef {
   col: number
@@ -38,6 +39,14 @@ export const HOME_WIDGET_DEFS: HomeWidgetDef[] = [
     defaultEnabled: true,
     component: HomeWeather,
     grid: { col: 3, row: 1, colSpan: 2, rowSpan: 2 }
+  },
+  {
+    id: 'proxy',
+    name: '网络代理',
+    description: '内置 mihomo 内核，一键连接、切换节点、看实时流量',
+    defaultEnabled: true,
+    component: HomeProxy,
+    grid: { col: 5, row: 1, colSpan: 2, rowSpan: 2 }
   },
   {
     id: 'notes',

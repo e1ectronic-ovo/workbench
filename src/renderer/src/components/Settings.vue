@@ -202,8 +202,118 @@
 
       </div>
 
+      <!-- 代理 -->
+      <div v-else-if="tab === 'proxy'" class="tab-pane">
+        <section class="mac-section">
+          <p class="mac-section__label">配置</p>
+          <div class="mac-group">
+            <div v-for="p in proxy.profiles" :key="p.id" class="mac-row">
+              <div class="mac-row__main">
+                <span class="cfg-dot" :class="{ 'is-on': p.id === proxy.snapshot?.activeProfileId }"></span>
+                <div class="mac-row__text">
+                  <div class="mac-row__title">{{ p.name }}</div>
+                  <div class="mac-row__sub">{{ profileMeta(p) }}</div>
+                </div>
+              </div>
+              <div class="mac-row__actions">
+                <span v-if="p.id === proxy.snapshot?.activeProfileId" class="cfg-badge">使用中</span>
+                <button
+                  v-else
+                  class="mac-btn mac-btn--secondary"
+                  type="button"
+                  :disabled="proxy.busy"
+                  @click="proxy.switchProfile(p.id)"
+                >
+                  切换
+                </button>
+                <button
+                  v-if="p.source === 'subscription' && p.id === proxy.snapshot?.activeProfileId"
+                  class="mac-icon-btn"
+                  type="button"
+                  title="重新拉取订阅"
+                  :disabled="proxy.busy"
+                  @click="proxy.updateSubscription()"
+                >
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" />
+                  </svg>
+                </button>
+                <button
+                  class="mac-icon-btn mac-icon-btn--danger"
+                  type="button"
+                  title="删除配置"
+                  @click="pendingProfile = p"
+                >
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="m19 6-1 14H6L5 6" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="!proxy.profiles.length" class="mac-row mac-empty">
+              还没有配置。导入一份 Clash 订阅，或选择本地 .yaml 文件。
+            </div>
+          </div>
+
+          <div class="pane-toolbar cfg-toolbar">
+            <p class="pane-hint">可以同时保存多份订阅或本地配置，随时切换；切换会重启内核。</p>
+            <div class="pane-actions">
+              <button class="mac-btn mac-btn--primary" type="button" @click="openSubscribe">
+                导入订阅
+              </button>
+              <button class="mac-btn mac-btn--secondary" type="button" @click="proxy.importProfile()">
+                本地文件
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="mac-section">
+          <p class="mac-section__label">端口</p>
+          <div class="mac-group">
+            <div class="mac-row">
+              <div class="mac-row__text">
+                <div class="mac-row__title">混合端口</div>
+                <div class="mac-row__sub">HTTP 与 SOCKS 共用，改动后自动重启内核</div>
+              </div>
+              <div class="mac-row__actions">
+                <input
+                  class="settings-input port-input"
+                  type="number"
+                  min="1024"
+                  max="65535"
+                  :value="proxySettings.mixedPort"
+                  @change="setPort('mixedPort', $event)"
+                />
+              </div>
+            </div>
+            <div class="mac-row">
+              <div class="mac-row__text">
+                <div class="mac-row__title">控制端口</div>
+                <div class="mac-row__sub">仅监听 127.0.0.1，供界面读取状态</div>
+              </div>
+              <div class="mac-row__actions">
+                <input
+                  class="settings-input port-input"
+                  type="number"
+                  min="1024"
+                  max="65535"
+                  :value="proxySettings.controllerPort"
+                  @change="setPort('controllerPort', $event)"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <p v-if="proxy.notice" class="notice" :class="{ 'is-error': proxy.noticeKind === 'error' }">
+          {{ proxy.notice }}
+        </p>
+      </div>
+
       <!-- 通用 -->
-      <div v-else class="tab-pane">
+      <div v-else-if="tab === 'general'" class="tab-pane">
         <section class="mac-section">
           <p class="mac-section__label">启动</p>
           <div class="mac-group">
@@ -233,6 +343,56 @@
             </label>
           </div>
           <p v-if="!settings.loginReady" class="warn">无法读取系统启动项，请确认在 Electron 客户端中运行。</p>
+        </section>
+
+        <section class="mac-section">
+          <p class="mac-section__label">版本</p>
+          <div class="mac-group">
+            <div class="mac-row">
+              <div class="mac-row__main">
+                <span class="core-dot" :class="updateDot" aria-hidden="true"></span>
+                <div class="mac-row__text">
+                  <div class="mac-row__title">{{ updateTitle }}</div>
+                  <div class="mac-row__sub">{{ updateSub }}</div>
+                </div>
+              </div>
+              <div class="mac-row__actions">
+                <button
+                  v-if="updateState.status === 'available'"
+                  class="mac-btn mac-btn--primary"
+                  type="button"
+                  @click="startDownload"
+                >
+                  下载更新
+                </button>
+                <button
+                  v-else-if="updateState.status === 'downloaded'"
+                  class="mac-btn mac-btn--primary"
+                  type="button"
+                  @click="installUpdate"
+                >
+                  重启安装
+                </button>
+                <button
+                  v-else
+                  class="mac-btn mac-btn--secondary"
+                  type="button"
+                  :disabled="updateState.status === 'checking' || updateState.status === 'downloading'"
+                  @click="checkUpdate"
+                >
+                  {{ updateState.status === 'checking' ? '检查中…' : '检查更新' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="updateState.status === 'downloading'" class="mac-row update-row">
+              <div class="update-bar"><span :style="{ width: `${updateState.percent}%` }"></span></div>
+              <span class="update-percent">{{ updateState.percent }}%</span>
+            </div>
+          </div>
+          <p v-if="updateState.status === 'error' && updateState.error" class="warn">
+            {{ updateState.error }}
+          </p>
         </section>
       </div>
     </div>
@@ -293,13 +453,55 @@
         </div>
       </div>
     </div>
+    <!-- 删除配置确认 -->
+    <div v-if="pendingProfile" class="mac-sheet-backdrop" @click.self="pendingProfile = null">
+      <div class="mac-sheet narrow">
+        <h2 class="mac-sheet__title">删除配置</h2>
+        <p class="confirm-text">
+          确定删除「{{ pendingProfile.name }}」？如果它正在使用，会自动切到剩下的配置。
+        </p>
+        <div class="dialog-actions">
+          <button class="mac-btn mac-btn--ghost" type="button" @click="pendingProfile = null">
+            取消
+          </button>
+          <button class="mac-btn mac-btn--danger" type="button" :disabled="proxy.busy" @click="confirmRemoveProfile">
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 导入订阅 -->
+    <div v-if="subscribeOpen" class="mac-sheet-backdrop" @click.self="subscribeOpen = false">
+      <form class="mac-sheet narrow" @submit.prevent="submitSubscription">
+        <h2 class="mac-sheet__title">导入订阅</h2>
+        <label class="mac-field">
+          <span>名称（可选）</span>
+          <input v-model="subscribeName" placeholder="例如：机场 A" maxlength="24" />
+        </label>
+        <label class="mac-field">
+          <span>Clash 订阅地址</span>
+          <input v-model="subscribeUrl" placeholder="https://…" spellcheck="false" />
+        </label>
+        <p v-if="subscribeError" class="warn-inline">{{ subscribeError }}</p>
+        <div class="dialog-actions">
+          <button class="mac-btn mac-btn--ghost" type="button" @click="subscribeOpen = false">取消</button>
+          <button class="mac-btn mac-btn--primary" type="submit" :disabled="proxy.busy || !subscribeUrl.trim()">
+            {{ proxy.busy ? '下载中…' : '导入' }}
+          </button>
+        </div>
+      </form>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { PRESET_COLORS, type ModuleConfig } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
+import { useProxyStore } from '../stores/proxy'
+import { defaultProxySettings, type ProxyProfile } from '../../../common/proxy'
+import { idleUpdateState, type UpdateState } from '../../../common/update'
 import {
   DEFAULT_CUSTOM_COLORS,
   useSettingsStore,
@@ -320,9 +522,141 @@ const settings = useSettingsStore()
 const tabs = [
   { id: 'modules' as const, label: '网站' },
   { id: 'appearance' as const, label: '外观' },
+  { id: 'proxy' as const, label: '代理' },
   { id: 'general' as const, label: '通用' }
 ]
 const tab = ref<(typeof tabs)[number]['id']>('modules')
+
+const proxy = useProxyStore()
+
+const proxySettings = computed(() => proxy.snapshot?.settings ?? defaultProxySettings())
+
+/* ── 应用更新 ── */
+const updateState = ref<UpdateState>(idleUpdateState())
+const appVersion = ref('')
+let offUpdate: (() => void) | undefined
+
+const updateDot = computed(() => {
+  switch (updateState.value.status) {
+    case 'available':
+    case 'downloaded':
+      return 'is-on'
+    case 'downloading':
+    case 'checking':
+      return 'is-idle'
+    case 'error':
+      return 'is-error'
+    default:
+      return 'is-off'
+  }
+})
+
+const updateTitle = computed(() => {
+  const s = updateState.value
+  switch (s.status) {
+    case 'checking':
+      return '正在检查更新…'
+    case 'available':
+      return `发现新版本 v${s.version}`
+    case 'downloading':
+      return `正在下载 v${s.version}`
+    case 'downloaded':
+      return `v${s.version} 已就绪`
+    case 'none':
+      return '已是最新版本'
+    case 'error':
+      return '检查更新失败'
+    default:
+      return `Workbench v${appVersion.value || '—'}`
+  }
+})
+
+const updateSub = computed(() => {
+  const s = updateState.value
+  switch (s.status) {
+    case 'checking':
+      return '正在向 GitHub 查询最新版本'
+    case 'available':
+      return '下载完成后提示重启，安装会直接覆盖当前版本'
+    case 'downloading':
+      return `${s.percent}% · ${formatSize(s.downloaded)} / ${formatSize(s.total)}`
+    case 'downloaded':
+      return '重启后覆盖安装，配置与登录状态都会保留'
+    case 'none':
+      return '启动时也会自动检查一次'
+    case 'error':
+      return '可以稍后重试，或到 GitHub Releases 手动下载'
+    default:
+      return '启动时自动检查，也可以手动检查'
+  }
+})
+
+function formatSize(bytes: number): string {
+  if (!bytes) return '0 MB'
+  return `${(bytes / 1048576).toFixed(1)} MB`
+}
+
+async function checkUpdate() {
+  const api = window.workbench?.update
+  if (!api) return
+  updateState.value = await api.check()
+}
+
+async function startDownload() {
+  const api = window.workbench?.update
+  if (!api) return
+  updateState.value = await api.download()
+}
+
+async function installUpdate() {
+  await window.workbench?.update?.install()
+}
+
+function profileMeta(p: ProxyProfile): string {
+  const source = p.source === 'subscription' ? '订阅' : '本地文件'
+  const time = p.updatedAt ? new Date(p.updatedAt).toLocaleString('zh-CN') : '未知时间'
+  return `${source} · ${p.nodeCount || 0} 个节点 · ${time}`
+}
+
+const subscribeOpen = ref(false)
+const subscribeUrl = ref('')
+const subscribeName = ref('')
+const subscribeError = ref('')
+const pendingProfile = ref<ProxyProfile | null>(null)
+
+function openSubscribe() {
+  subscribeName.value = ''
+  subscribeUrl.value = ''
+  subscribeError.value = ''
+  subscribeOpen.value = true
+}
+
+async function submitSubscription() {
+  subscribeError.value = ''
+  const ok = await proxy.setSubscription(subscribeUrl.value, subscribeName.value.trim() || undefined)
+  if (!ok) {
+    subscribeError.value = proxy.notice || '导入失败'
+    return
+  }
+  subscribeOpen.value = false
+}
+
+async function confirmRemoveProfile() {
+  const target = pendingProfile.value
+  if (!target) return
+  await proxy.removeProfile(target.id)
+  pendingProfile.value = null
+}
+
+async function setPort(key: 'mixedPort' | 'controllerPort', e: Event) {
+  const value = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(value) || value < 1024 || value > 65535) {
+    proxy.flash('端口需要是 1024–65535 之间的整数', 'error')
+    await proxy.refresh()
+    return
+  }
+  await proxy.patchSettings({ [key]: value })
+}
 
 const themeOptions: {
   id: ThemeId
@@ -399,6 +733,20 @@ const removing = ref(false)
 
 onMounted(async () => {
   await settings.refreshLoginItem()
+  await proxy.refresh()
+
+  const api = window.workbench
+  if (api?.update) {
+    appVersion.value = (await api.getAppInfo()).version
+    updateState.value = await api.update.state()
+    offUpdate = api.update.onChange((state) => {
+      updateState.value = state
+    })
+  }
+})
+
+onBeforeUnmount(() => {
+  offUpdate?.()
 })
 
 function onThemeSelect(id: ThemeId) {
@@ -682,6 +1030,146 @@ async function confirmRemove() {
   margin: var(--space-2) 0 0 var(--space-3);
   color: var(--warning);
   font-size: var(--text-sm);
+}
+
+.core-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.core-dot.is-on {
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent);
+}
+
+.core-dot.is-idle {
+  background: var(--warning);
+}
+
+.core-dot.is-error {
+  background: var(--destructive);
+}
+
+.core-dot.is-off {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.settings-input {
+  margin-top: 5px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: var(--text-sm);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.settings-input:focus {
+  border-color: var(--border-focus);
+}
+
+.cfg-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+
+.cfg-dot.is-on {
+  background: var(--success);
+  border-color: transparent;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+.cfg-badge {
+  font-size: var(--text-xs);
+  color: var(--success);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  white-space: nowrap;
+}
+
+.cfg-toolbar {
+  margin-top: var(--space-3);
+  margin-bottom: 0;
+}
+
+.warn-inline {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--destructive);
+}
+
+.update-row {
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.update-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--fill-tertiary);
+  overflow: hidden;
+}
+
+.update-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 140ms linear;
+}
+
+.update-percent {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+}
+
+.port-input {
+  width: 84px;
+  margin-top: 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(440px, 52vw);
+}
+
+.sub-row {
+  align-items: flex-end;
+}
+
+.sub-row .mac-row__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--success);
+}
+
+.notice.is-error {
+  color: var(--destructive);
 }
 
 </style>

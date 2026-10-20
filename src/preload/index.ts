@@ -1,4 +1,14 @@
 import { contextBridge, ipcRenderer, shell } from 'electron'
+import type { UpdateState } from '../common/update'
+import type {
+  ProxyActionResult,
+  ProxyGroup,
+  ProxyMode,
+  ProxyProfile,
+  ProxySettings,
+  ProxySnapshot,
+  ProxyTestProgress
+} from '../common/proxy'
 
 const api = {
   platform: process.platform as string,
@@ -86,7 +96,97 @@ const api = {
     return () => ipcRenderer.removeListener('guest:open-tab', listener)
   },
 
-  openExternal: (url: string) => shell.openExternal(url)
+  openExternal: (url: string) => shell.openExternal(url),
+
+  proxy: {
+    snapshot: () => ipcRenderer.invoke('proxy:snapshot') as Promise<ProxySnapshot>,
+
+    groups: () => ipcRenderer.invoke('proxy:groups') as Promise<ProxyGroup[]>,
+
+    logs: () => ipcRenderer.invoke('proxy:logs') as Promise<string[]>,
+
+    start: () => ipcRenderer.invoke('proxy:start') as Promise<ProxyActionResult>,
+
+    /** 只拉起内核（不接管系统代理），用于打开节点列表 / 测速 */
+    startCore: () => ipcRenderer.invoke('proxy:startCore') as Promise<ProxyActionResult>,
+
+    toggleProxy: (enabled?: boolean) =>
+      ipcRenderer.invoke('proxy:toggleProxy', enabled) as Promise<ProxyActionResult>,
+
+    stop: () => ipcRenderer.invoke('proxy:stop') as Promise<ProxyActionResult>,
+
+    restart: () => ipcRenderer.invoke('proxy:restart') as Promise<ProxyActionResult>,
+
+    select: (group: string, node: string) =>
+      ipcRenderer.invoke('proxy:select', { group, node }) as Promise<ProxyActionResult>,
+
+    testDelay: (node: string) => ipcRenderer.invoke('proxy:testDelay', node) as Promise<number>,
+
+    /** 整组测速；进度通过 onTestProgress 推送 */
+    testGroup: (group: string) =>
+      ipcRenderer.invoke('proxy:testGroup', group) as Promise<ProxyGroup | null>,
+
+    onTestProgress: (cb: (payload: ProxyTestProgress) => void) => {
+      const listener = (_: Electron.IpcRendererEvent, payload: ProxyTestProgress) => cb(payload)
+      ipcRenderer.on('proxy:test-progress', listener)
+      return () => ipcRenderer.removeListener('proxy:test-progress', listener)
+    },
+
+    setMode: (mode: ProxyMode) =>
+      ipcRenderer.invoke('proxy:setMode', mode) as Promise<ProxyActionResult>,
+
+    patchSettings: (patch: Partial<ProxySettings>) =>
+      ipcRenderer.invoke('proxy:patchSettings', patch) as Promise<ProxySnapshot>,
+
+    setSystemProxy: (enabled: boolean) =>
+      ipcRenderer.invoke('proxy:setSystemProxy', enabled) as Promise<ProxyActionResult>,
+
+    importProfile: () =>
+      ipcRenderer.invoke('proxy:importProfile') as Promise<
+        ProxyActionResult & { profile?: ProxyProfile }
+      >,
+
+    setSubscription: (url: string, name?: string) =>
+      ipcRenderer.invoke('proxy:setSubscription', { url, name }) as Promise<
+        ProxyActionResult & { profile?: ProxyProfile }
+      >,
+
+    updateSubscription: () =>
+      ipcRenderer.invoke('proxy:updateSubscription') as Promise<
+        ProxyActionResult & { profile?: ProxyProfile }
+      >,
+
+    switchProfile: (id: string) =>
+      ipcRenderer.invoke('proxy:switchProfile', id) as Promise<ProxyActionResult>,
+
+    removeProfile: (id: string) =>
+      ipcRenderer.invoke('proxy:removeProfile', id) as Promise<ProxyActionResult>,
+
+    renameProfile: (id: string, name: string) =>
+      ipcRenderer.invoke('proxy:renameProfile', { id, name }) as Promise<ProxyActionResult>,
+
+    onState: (cb: () => void) => {
+      const listener = (): void => cb()
+      ipcRenderer.on('proxy:state', listener)
+      return () => ipcRenderer.removeListener('proxy:state', listener)
+    }
+  },
+
+  update: {
+    state: () => ipcRenderer.invoke('update:state') as Promise<UpdateState>,
+
+    check: () => ipcRenderer.invoke('update:check') as Promise<UpdateState>,
+
+    download: () => ipcRenderer.invoke('update:download') as Promise<UpdateState>,
+
+    install: () => ipcRenderer.invoke('update:install') as Promise<boolean>,
+
+    onChange: (cb: (state: UpdateState) => void) => {
+      const listener = (_: Electron.IpcRendererEvent, state: UpdateState) => cb(state)
+      ipcRenderer.on('update:changed', listener)
+      return () => ipcRenderer.removeListener('update:changed', listener)
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('workbench', api)

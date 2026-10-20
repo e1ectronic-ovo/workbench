@@ -1,6 +1,6 @@
 {
   "name": "workbench",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Personal workbench - desktop client with home dashboard and site modules",
   "private": true,
   "main": "out/main/index.js",
@@ -10,14 +10,16 @@
     "build": "npm run typecheck && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder --win",
+    "pack": "node scripts/fetch-core.mjs && npm run build && electron-builder --dir",
+    "dist": "node scripts/fetch-core.mjs && npm run build && electron-builder --win",
+    "core": "node scripts/fetch-core.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "icons": "node scripts/generate-icons.mjs",
     "whale-assets": "node scripts/optimize-whale-assets.mjs",
-    "maid-assets": "node scripts/fetch-maid-atelier-assets.mjs"
+    "maid-assets": "node scripts/fetch-maid-atelier-assets.mjs",
+    "release": "npm run dist -- --publish always"
   },
   "build": {
     "appId": "com.workbench.app",
@@ -39,6 +41,13 @@
           "icon.svg",
           "icon.png",
           "icon.ico"
+        ]
+      },
+      {
+        "from": "resources/core",
+        "to": "core",
+        "filter": [
+          "**/*"
         ]
       }
     ],
@@ -70,9 +79,16 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "e1ectronic-ovo",
+      "repo": "workbench"
     }
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
     "@types/node": "^22.10.2",
