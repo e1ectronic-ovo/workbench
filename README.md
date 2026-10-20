@@ -67,6 +67,9 @@ Workbench 自己就是代理客户端，不依赖 FLClash / Clash Verge 在后�
   安装为 NSIS 覆盖升级，`userData`（配置、登录态）保留。
 - 更新源固定为 `e1ectronic-ovo/workbench`，配置在 `package.json` 的 `build.publish`。
   仓库必须是**公开**的，否则客户端拿不到 `latest.yml`。
+- **不会动用户数据**：安装目录（`%LOCALAPPDATA%\Programs\Workbench`）和数据目录（`%APPDATA%\Workbench`）
+  是两棵树，升级只替换前者。`nsis.deleteAppDataOnUninstall: false` 保证连卸载都不会删数据；
+  升级时旧版本卸载器会先跑一遍，这个开关同样生效。
 
 > 分发注意：mihomo 与 FLClash 均为 GPL-3.0。这里以独立进程方式调用，未链接进应用代码，
 > 分发时请随包提供其许可证文本与源码获取方式。

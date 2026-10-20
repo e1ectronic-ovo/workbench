@@ -15,8 +15,13 @@ class UpdateService {
   private prompted = new Set<string>()
   private wired = false
 
+  /** 便携版没有安装目录，自动更新会把绿色版变成安装版，直接禁用 */
+  private get portable(): boolean {
+    return !!process.env['PORTABLE_EXECUTABLE_DIR']
+  }
+
   init(): void {
-    if (!app.isPackaged) return
+    if (!app.isPackaged || this.portable) return
     this.wire()
 
     setTimeout(() => {
@@ -84,6 +89,10 @@ class UpdateService {
   }
 
   async check(manual = true): Promise<UpdateState> {
+    if (this.portable) {
+      this.patch({ status: 'error', error: '便携版不支持自动更新，请到 GitHub Releases 下载新版' })
+      return this.state
+    }
     if (!app.isPackaged) {
       this.patch({ status: 'error', error: '开发模式下不检查更新' })
       return this.state
@@ -115,8 +124,8 @@ class UpdateService {
 
   install(): void {
     if (this.state.status !== 'downloaded') return
-    // 覆盖安装：NSIS 会就地升级，userData（配置/登录态）保留
-    setImmediate(() => autoUpdater.quitAndInstall(false, true))
+    // 静默覆盖安装：只替换安装目录里的程序文件，userData 原样保留
+    setImmediate(() => autoUpdater.quitAndInstall(true, true))
   }
 
   /** 发现新版本时的主动提示，一个版本只弹一次 */
