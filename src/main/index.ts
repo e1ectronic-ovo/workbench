@@ -40,6 +40,33 @@ function adoptLegacyUserData(): void {
 
 adoptLegacyUserData()
 
+/**
+ * 单实例锁：第二个实例必须让位给已经跑着的那个。
+ * 这里不是「体验问题」——两个实例会各自拉起一个 mihomo 抢同一组端口、
+ * 互相覆盖系统代理与注册表备份，退出时还原顺序也会错乱。
+ *
+ * 锁建立在 userData 路径上，所以改名前后（%APPDATA%\Workbench / %APPDATA%\Whaletide）
+ * 会各有一把锁；等老用户都升级完之后不会再有并存情况。
+ */
+const primaryInstance = app.requestSingleInstanceLock()
+if (!primaryInstance) {
+  console.log('[whaletide] 已有实例在运行，本次启动退出')
+  app.quit()
+}
+
+app.on('second-instance', (_event, argv) => {
+  // 开机自启带 --hidden 的重复启动不应该把窗口弹出来
+  if (argv.includes('--hidden')) return
+  const win = mainWindow
+  if (!win || win.isDestroyed()) {
+    createWindow()
+    return
+  }
+  if (win.isMinimized()) win.restore()
+  if (!win.isVisible()) win.show()
+  win.focus()
+})
+
 // 豆包等站点用跨子域 Cookie 做登录；关掉第三方存储隔离，会话才能在内嵌页里留下来。
 app.commandLine.appendSwitch('disable-features', 'ThirdPartyStoragePartitioning')
 
@@ -432,6 +459,9 @@ function configureGuestSession(): void {
 }
 
 app.whenReady().then(() => {
+  // 没抢到锁的实例在退出途中，不要初始化任何东西
+  if (!primaryInstance) return
+
   configureGuestSession()
 
   protocol.handle('wbicon', (request) => {
@@ -475,6 +505,11 @@ app.whenReady().then(() => {
 
 let quitting = false
 app.on('before-quit', (event) => {
+  // 没抢到锁的实例没启动过内核，直接退，别等那 2.5 秒兜底
+  if (!primaryInstance) {
+    app.exit(0)
+    return
+  }
   if (quitting) return
   quitting = true
   event.preventDefault()
