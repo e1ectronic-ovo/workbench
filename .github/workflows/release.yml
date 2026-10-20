@@ -23,11 +23,29 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
-      - name: 构建并发布
+      - name: 构建
+        # 只构建，不由 electron-builder 上传：多目标并发发布会给同一个 tag 建出重复 Release，
+        # 导致 releases/latest 指向只有 blockmap 的那份，客户端拿不到 latest.yml。
+        run: npm run dist
+
+      - name: 发布 Release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # fetch-core 会先拉内核与 GeoIP，再打 NSIS 安装包并上传到 Release
-        run: npm run release
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "不是 tag 触发，跳过发布"
+            exit 0
+          fi
+          TAG="${GITHUB_REF_NAME}"
+          ASSETS="dist/*.exe dist/*.blockmap dist/latest.yml"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" $ASSETS --clobber
+            gh release edit "$TAG" --latest
+          else
+            gh release create "$TAG" $ASSETS --title "$TAG" --generate-notes --latest
+          fi
 
       - name: 上传产物
         uses: actions/upload-artifact@v4

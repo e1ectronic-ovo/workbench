@@ -179,8 +179,11 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-- tag 触发 `.github/workflows/release.yml`：下载内核 → 构建 NSIS 安装包 → 连同 `latest.yml` 上传到 GitHub Release。
-- 本地发布：`GH_TOKEN=<token> npm run release`（等价于 `dist` + `--publish always`）。
+- tag 触发 `.github/workflows/release.yml`：下载内核 → 构建 NSIS 安装包 → 用 `gh release create --latest`
+  一次性发布 `latest.yml` 与安装包。
+- 本地发布：先 `npm run dist`，再 `gh release create vX.Y.Z dist/*.exe dist/latest.yml --latest`。
+  不要用 electron-builder 的 `--publish`：多个 target 并发上传会给同一个 tag 建出重复 Release，
+  `releases/latest` 可能指向只有 blockmap 的那份，客户端就拿不到 `latest.yml` 了。
 - 客户端靠 Release 里的 `latest.yml` 判断版本，因此**仓库必须是公开的**，Release 也要是正式版而不是 draft
   （`build.publish.releaseType` 已设为 `release`）。
 
