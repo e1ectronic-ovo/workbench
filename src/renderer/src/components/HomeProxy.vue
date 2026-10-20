@@ -67,6 +67,20 @@
         <span class="px-conn">{{ snapshot.traffic.connections }} 连接</span>
       </div>
 
+      <div v-if="subscriptionUsage" class="px-quota" :class="subscriptionTone">
+        <div class="px-quota__top">
+          <span class="px-quota__label">订阅流量</span>
+          <strong class="px-quota__remaining">{{ subscriptionRemainingText }}</strong>
+        </div>
+        <div v-if="subscriptionUsage.total > 0" class="px-quota__track" aria-hidden="true">
+          <span :style="{ width: `${subscriptionPercentValue}%` }"></span>
+        </div>
+        <div class="px-quota__meta">
+          <span>{{ subscriptionMetaText }}</span>
+          <span>{{ subscriptionExpiryText }}</span>
+        </div>
+      </div>
+
       <svg v-if="!sparkIdle" class="px-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <linearGradient id="pxSparkFill" x1="0" y1="0" x2="0" y2="1">
@@ -115,7 +129,7 @@
               @click="pickProfile(p.id)"
             >
               <span class="px-pop__name">{{ p.name }}</span>
-              <span class="px-pop__sub">{{ p.nodeCount }} 节点</span>
+              <span class="px-pop__sub">{{ profileItemMeta(p) }}</span>
               <svg v-if="p.id === snapshot.activeProfileId" class="px-pop__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true">
                 <path d="M20 6 9 17l-5-5" />
               </svg>
@@ -219,8 +233,8 @@
         <p class="px-sub__hint">支持多份配置；导入后可随时在这里或其他配置之间切换。</p>
 
         <label class="px-field">
-          <span>名称（可选）</span>
-          <input v-model="subscribeName" placeholder="例如：机场 A" maxlength="24" />
+          <span>名称（可选，留空自动读取）</span>
+          <input v-model="subscribeName" placeholder="自动使用订阅返回的名称" maxlength="24" />
         </label>
         <label class="px-field">
           <span>Clash 订阅地址</span>
@@ -242,7 +256,14 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ProxyMode } from '../../../common/proxy'
+import type { ProxyMode, ProxyProfile, ProxySubscriptionUsage } from '../../../common/proxy'
+import {
+  formatSubscriptionExpiry,
+  formatSubscriptionRemaining,
+  formatTrafficSize,
+  subscriptionPercent,
+  subscriptionUsed
+} from '../lib/proxy-format'
 import { useProxyStore } from '../stores/proxy'
 
 const proxy = useProxyStore()
@@ -300,6 +321,45 @@ const metaLine = computed(() => {
 })
 
 const activeProfileName = computed(() => proxy.activeProfile?.name ?? '配置')
+
+/** 弹层里每份配置的摘要：节点数 + 订阅流量剩余（有的话） */
+function profileItemMeta(p: ProxyProfile): string {
+  const usage = p.subscription?.usage
+  const remaining = usage ? formatSubscriptionRemaining(usage) : ''
+  return `${p.nodeCount} 节点${remaining ? ` · ${remaining}` : ''}`
+}
+
+const subscriptionUsage = computed<ProxySubscriptionUsage | null>(
+  () => proxy.activeProfile?.subscription?.usage ?? null
+)
+
+const subscriptionRemainingText = computed(() => {
+  const usage = subscriptionUsage.value
+  return usage ? formatSubscriptionRemaining(usage) : ''
+})
+
+const subscriptionMetaText = computed(() => {
+  const usage = subscriptionUsage.value
+  if (!usage) return ''
+  const used = `已用 ${formatTrafficSize(subscriptionUsed(usage))}`
+  return usage.total > 0 ? `${used} / ${formatTrafficSize(usage.total)}` : used
+})
+
+const subscriptionExpiryText = computed(() => {
+  const usage = subscriptionUsage.value
+  return usage ? formatSubscriptionExpiry(usage.expire) : ''
+})
+
+const subscriptionPercentValue = computed(() => {
+  const usage = subscriptionUsage.value
+  return usage ? subscriptionPercent(usage) : 0
+})
+
+const subscriptionTone = computed(() => {
+  if (subscriptionPercentValue.value >= 90) return 'is-danger'
+  if (subscriptionPercentValue.value >= 70) return 'is-warn'
+  return ''
+})
 
 const delayTone = computed(() => delayClassOf(snapshot.value?.activeDelay ?? -1))
 
@@ -728,6 +788,67 @@ onBeforeUnmount(() => {
   font-size: var(--text-xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.px-quota {
+  margin-top: 9px;
+  padding: 7px 9px 6px;
+  border-radius: 8px;
+  background: var(--fill-tertiary);
+}
+
+.px-quota__top,
+.px-quota__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.px-quota__label,
+.px-quota__meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.px-quota__remaining {
+  font-size: var(--text-xs);
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.px-quota__track {
+  height: 3px;
+  margin: 6px 0 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--border-strong);
+}
+
+.px-quota__track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.px-quota.is-warn .px-quota__track span {
+  background: var(--warning);
+}
+
+.px-quota.is-danger .px-quota__track span {
+  background: var(--destructive);
+}
+
+.px-quota.is-warn .px-quota__remaining {
+  color: var(--warning);
+}
+
+.px-quota.is-danger .px-quota__remaining {
+  color: var(--destructive);
 }
 
 .px-spark {

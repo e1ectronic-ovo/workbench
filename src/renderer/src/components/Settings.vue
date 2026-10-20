@@ -504,8 +504,8 @@
       <form class="mac-sheet narrow" @submit.prevent="submitSubscription">
         <h2 class="mac-sheet__title">导入订阅</h2>
         <label class="mac-field">
-          <span>名称（可选）</span>
-          <input v-model="subscribeName" placeholder="例如：机场 A" maxlength="24" />
+          <span>名称（可选，留空自动读取）</span>
+          <input v-model="subscribeName" placeholder="自动使用订阅返回的名称" maxlength="24" />
         </label>
         <label class="mac-field">
           <span>Clash 订阅地址</span>
@@ -529,6 +529,7 @@ import { CLOSE_ACTION_LABELS, type CloseAction } from '../../../common/window'
 import { PRESET_COLORS, type ModuleConfig } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
 import { useProxyStore } from '../stores/proxy'
+import { formatSubscriptionRemaining } from '../lib/proxy-format'
 import { defaultProxySettings, type ProxyProfile } from '../../../common/proxy'
 import { idleUpdateState, type UpdateState } from '../../../common/update'
 import {
@@ -664,7 +665,9 @@ async function installUpdate() {
 function profileMeta(p: ProxyProfile): string {
   const source = p.source === 'subscription' ? '订阅' : '本地文件'
   const time = p.updatedAt ? new Date(p.updatedAt).toLocaleString('zh-CN') : '未知时间'
-  return `${source} · ${p.nodeCount || 0} 个节点 · ${time}`
+  const usage = p.subscription?.usage
+  const traffic = usage ? ` · ${formatSubscriptionRemaining(usage)}` : ''
+  return `${source} · ${p.nodeCount || 0} 个节点${traffic} · ${time}`
 }
 
 const subscribeOpen = ref(false)

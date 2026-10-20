@@ -211,7 +211,8 @@ export const useProxyStore = defineStore('proxy', () => {
         if (result.error && result.error !== '已取消') flash(result.error, 'error')
         return false
       }
-      flash(`已导入${result.profile ? ` · ${result.profile.nodeCount} 个节点` : ''}`)
+      const imported = result.profile?.name?.trim()
+      flash(`已导入${imported ? `「${imported}」` : ''}${result.profile ? ` · ${result.profile.nodeCount} 个节点` : ''}`)
       await loadGroups()
       await refresh()
       return true
@@ -265,7 +266,8 @@ export const useProxyStore = defineStore('proxy', () => {
         if (result.error && result.error !== '已取消') flash(result.error, 'error')
         return
       }
-      flash('配置已导入')
+      const imported = result.profile?.name?.trim()
+      flash(`配置已导入${imported ? `「${imported}」` : ''}`)
       await loadGroups()
       await refresh()
     } finally {

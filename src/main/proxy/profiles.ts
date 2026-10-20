@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import type { ProxyProfile } from '../../common/proxy'
+import type { ProxyProfile, ProxySubscriptionInfo } from '../../common/proxy'
 import { countProxies, looksLikeClashConfig } from './config'
 import { proxyDir } from './settings'
 
@@ -131,9 +131,11 @@ export function getText(id: string): string | null {
 
 export function addProfile(input: {
   name?: string
+  nameSource?: 'auto' | 'manual'
   source: 'subscription' | 'file'
   url?: string
   text: string
+  subscription?: ProxySubscriptionInfo
 }): ProxyProfile {
   if (!looksLikeClashConfig(input.text)) {
     throw new Error('配置内容里找不到 proxies 或 proxy-groups 段')
@@ -147,10 +149,12 @@ export function addProfile(input: {
   const profile: ProxyProfile = {
     id,
     name: uniqueName(baseName, index.profiles),
+    nameSource: input.nameSource ?? (input.name?.trim() ? 'manual' : 'auto'),
     source: input.source,
     url: input.url ?? '',
     updatedAt: new Date().toISOString(),
-    nodeCount: countProxies(input.text)
+    nodeCount: countProxies(input.text),
+    ...(input.subscription ? { subscription: input.subscription } : {})
   }
   writeIndex({ activeId: id, profiles: [...index.profiles, profile] })
   return profile
@@ -159,7 +163,12 @@ export function addProfile(input: {
 export function updateContent(
   id: string,
   text: string,
-  url?: string
+  url?: string,
+  options: {
+    name?: string
+    nameSource?: 'auto' | 'manual'
+    subscription?: ProxySubscriptionInfo
+  } = {}
 ): ProxyProfile | null {
   if (!looksLikeClashConfig(text)) throw new Error('配置内容里找不到 proxies 或 proxy-groups 段')
   const index = listProfiles()
@@ -171,7 +180,14 @@ export function updateContent(
     ...existing,
     url: url ?? existing.url,
     updatedAt: new Date().toISOString(),
-    nodeCount: countProxies(text)
+    nodeCount: countProxies(text),
+    ...(options.name?.trim()
+      ? {
+          name: uniqueName(options.name, index.profiles, id),
+          nameSource: options.nameSource ?? 'manual'
+        }
+      : {}),
+    ...(options.subscription ? { subscription: options.subscription } : {})
   }
   writeIndex({
     activeId: index.activeId,
@@ -192,7 +208,11 @@ export function rename(id: string, name: string): ProxyProfile | null {
   const index = listProfiles()
   const existing = index.profiles.find((p) => p.id === id)
   if (!existing) return null
-  const next: ProxyProfile = { ...existing, name: uniqueName(name, index.profiles, id) }
+  const next: ProxyProfile = {
+    ...existing,
+    name: uniqueName(name, index.profiles, id),
+    nameSource: 'manual'
+  }
   writeIndex({
     activeId: index.activeId,
     profiles: index.profiles.map((p) => (p.id === id ? next : p))

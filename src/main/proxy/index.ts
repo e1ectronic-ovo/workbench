@@ -398,10 +398,12 @@ export class ProxyService {
 
     const profile: ProxyProfileInfo = current
       ? {
+          name: current.name,
           source: current.source,
           url: current.url,
           updatedAt: current.updatedAt,
-          nodeCount: current.nodeCount
+          nodeCount: current.nodeCount,
+          subscription: current.subscription ?? null
         }
       : emptyProfile()
 
@@ -620,7 +622,7 @@ export class ProxyService {
     }
   }
 
-  async importProfile(): Promise<ProxyActionResult & { profile?: ProxyProfileInfo }> {
+  async importProfile(): Promise<ProxyActionResult & { profile?: ProxyProfile }> {
     const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
     const result = win
       ? await dialog.showOpenDialog(win, {
@@ -663,19 +665,34 @@ export class ProxyService {
     const trimmed = url.trim()
     if (!trimmed) return { ok: false, error: '请填写订阅地址' }
     try {
-      const text = await fetchSubscription(trimmed)
+      const fetched = await fetchSubscription(trimmed)
+      const requestedName = name?.trim() ?? ''
       // 同一个订阅地址并指定了名称时视为「更新」，否则新增一份配置
       const existing = profileStore
         .listProfiles()
         .profiles.find((p) => p.source === 'subscription' && p.url === trimmed)
+      const autoName = fetched.name.trim()
+      const adoptedName =
+        requestedName || (existing?.nameSource === 'manual' ? '' : autoName)
       const profile = existing
-        ? profileStore.updateContent(existing.id, text, trimmed)
-        : profileStore.addProfile({ name, source: 'subscription', url: trimmed, text })
+        ? profileStore.updateContent(existing.id, fetched.text, trimmed, {
+            name: adoptedName || undefined,
+            nameSource: requestedName ? 'manual' : 'auto',
+            subscription: fetched.subscription
+          })
+        : profileStore.addProfile({
+            name: requestedName || autoName || undefined,
+            nameSource: requestedName ? 'manual' : 'auto',
+            source: 'subscription',
+            url: trimmed,
+            text: fetched.text,
+            subscription: fetched.subscription
+          })
       if (!profile) return { ok: false, error: '写入配置失败' }
 
       profileStore.setActive(profile.id)
       this.settings = patchSettings({ subscriptionUrl: trimmed })
-      writeConfig(this.settings, text)
+      writeConfig(this.settings, fetched.text)
       if (this.status === 'running') await this.restart()
       this.emit()
       return { ok: true, profile }

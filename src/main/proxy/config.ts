@@ -1,10 +1,18 @@
 import { writeFileSync } from 'fs'
-import type { ProxySettings } from '../../common/proxy'
+import type { ProxySettings, ProxySubscriptionInfo } from '../../common/proxy'
 import { proxyFilePath } from './settings'
+import { parseSubscriptionMeta } from './subscription'
 
 const CONFIG_FILE = 'config.yaml'
 
 const SUBSCRIPTION_UA = 'clash-verge/v2.3.2'
+
+export interface FetchedSubscription {
+  text: string
+  /** 响应头中的订阅名称，供自动命名使用 */
+  name: string
+  subscription: ProxySubscriptionInfo
+}
 
 export function configPath(): string {
   return proxyFilePath(CONFIG_FILE)
@@ -56,7 +64,7 @@ function tryDecodeBase64(text: string): string | null {
  * 拉取订阅并归一化成 Clash 配置文本。
  * 部分机场默认返回 base64 节点列表，这里尽量解码后再判断一次。
  */
-export async function fetchSubscription(url: string): Promise<string> {
+export async function fetchSubscription(url: string): Promise<FetchedSubscription> {
   const trimmed = url.trim()
   if (!/^https?:\/\//i.test(trimmed)) {
     throw new Error('订阅地址需要以 http:// 或 https:// 开头')
@@ -81,13 +89,18 @@ export async function fetchSubscription(url: string): Promise<string> {
     throw new Error(`订阅下载失败：服务器返回 ${response.status}`)
   }
 
+  const metadata = parseSubscriptionMeta(response.headers, trimmed)
   const text = (await response.text()).trim()
   if (!text) throw new Error('订阅返回了空内容')
 
-  if (looksLikeClashConfig(text)) return text
+  if (looksLikeClashConfig(text)) {
+    return { text, name: metadata.name, subscription: metadata }
+  }
 
   const decoded = tryDecodeBase64(text)
-  if (decoded && looksLikeClashConfig(decoded)) return decoded
+  if (decoded && looksLikeClashConfig(decoded)) {
+    return { text: decoded, name: metadata.name, subscription: metadata }
+  }
 
   throw new Error('这不是 Clash 格式的订阅，请在机场后台选择「Clash」订阅链接')
 }

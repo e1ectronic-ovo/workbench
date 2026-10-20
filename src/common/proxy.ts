@@ -6,6 +6,27 @@ export type ProxyMode = 'rule' | 'global' | 'direct'
 
 export type ProxyProfileSource = 'none' | 'subscription' | 'file'
 
+/** 机场订阅响应头里携带的流量信息；-1 表示响应里没有该字段 */
+export interface ProxySubscriptionUsage {
+  /** 已上传字节数 */
+  upload: number
+  /** 已下载字节数 */
+  download: number
+  /** 套餐总流量；0 表示不限量，-1 表示未知 */
+  total: number
+  /** 到期时间（Unix 秒）；0 表示未知或长期有效 */
+  expire: number
+}
+
+/** 从订阅响应头解析出的附加信息 */
+export interface ProxySubscriptionInfo {
+  usage: ProxySubscriptionUsage | null
+  /** 机场管理页，响应头未提供时为空 */
+  homeUrl: string
+  /** 建议更新间隔（小时）；0 表示未提供 */
+  updateInterval: number
+}
+
 export interface ProxySettings {
   /** 应用启动后自动连接内核 */
   enabledOnStart: boolean
@@ -53,20 +74,26 @@ export interface ProxyTraffic {
 }
 
 export interface ProxyProfileInfo {
+  name: string
   source: ProxyProfileSource
   url: string
   updatedAt: string
   nodeCount: number
+  subscription: ProxySubscriptionInfo | null
 }
 
 /** 一份配置文件（订阅或本地文件），可同时存在多份并切换 */
 export interface ProxyProfile {
   id: string
   name: string
+  /** 名称是订阅自动读取的还是用户手动指定的 */
+  nameSource?: 'auto' | 'manual'
   source: 'subscription' | 'file'
   url: string
   updatedAt: string
   nodeCount: number
+  /** 订阅响应头里的名称、流量和到期信息；本地文件没有 */
+  subscription?: ProxySubscriptionInfo
 }
 
 export interface ProxySnapshot {
@@ -114,7 +141,14 @@ export function emptyTraffic(): ProxyTraffic {
 }
 
 export function emptyProfile(): ProxyProfileInfo {
-  return { source: 'none', url: '', updatedAt: '', nodeCount: 0 }
+  return {
+    name: '',
+    source: 'none',
+    url: '',
+    updatedAt: '',
+    nodeCount: 0,
+    subscription: null
+  }
 }
 
 export function defaultProxySettings(): ProxySettings {
