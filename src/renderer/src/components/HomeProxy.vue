@@ -67,6 +67,15 @@
         <span class="px-conn">{{ snapshot.traffic.connections }} 连接</span>
       </div>
 
+      <!-- 本次连接的累计消耗：只统计走代理节点的流量，连接结束后保留显示 -->
+      <div v-if="proxy.running" class="px-session">
+        <span>本次连接</span>
+        <span class="px-session__total">
+          ↑{{ formatTrafficSize(snapshot.traffic.sessionUp) }}
+          ↓{{ formatTrafficSize(snapshot.traffic.sessionDown) }}
+        </span>
+      </div>
+
       <div v-if="subscriptionUsage" class="px-quota" :class="subscriptionTone">
         <div class="px-quota__top">
           <span class="px-quota__label">订阅流量</span>
@@ -518,10 +527,13 @@ function tick(): void {
 
 async function refreshSample(): Promise<void> {
   await proxy.refresh()
-  const down = proxy.snapshot?.traffic.down ?? 0
-  if (proxy.running) {
+  const traffic = proxy.snapshot?.traffic
+  const down = traffic?.down ?? 0
+  const hasConnections = (traffic?.connections ?? 0) > 0
+  if (proxy.running && (down > 0 || hasConnections)) {
     samples.value = [...samples.value, down].slice(-32)
   } else if (samples.value.length) {
+    // 内核停了、或所有代理连接都已结束：清掉旧曲线，回到「暂无流量」占位
     samples.value = []
   }
 }
@@ -787,6 +799,20 @@ onBeforeUnmount(() => {
   margin-left: auto;
   font-size: var(--text-xs);
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.px-session {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.px-session__total {
   font-variant-numeric: tabular-nums;
 }
 

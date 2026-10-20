@@ -12,10 +12,17 @@ interface ProxiesPayload {
   proxies: Record<string, RawProxy>
 }
 
+interface RawConnection {
+  upload?: number
+  download?: number
+  /** 出站链路：chains[0] 是实际出站（节点名或 DIRECT） */
+  chains?: string[]
+}
+
 interface ConnectionsPayload {
   downloadTotal?: number
   uploadTotal?: number
-  connections?: unknown[]
+  connections?: RawConnection[] | null
 }
 
 interface VersionPayload {

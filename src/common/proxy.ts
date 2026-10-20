@@ -64,12 +64,17 @@ export interface ProxyGroup {
 }
 
 export interface ProxyTraffic {
-  /** 上行字节/秒 */
+  /** 上行字节/秒（仅走代理节点的流量） */
   up: number
-  /** 下行字节/秒 */
+  /** 下行字节/秒（仅走代理节点的流量） */
   down: number
+  /** 内核启动以来全部流量（含直连），仅供内部参考，不进界面 */
   totalUp: number
   totalDown: number
+  /** 本次内核运行以来实际走代理节点的累计消耗（含已结束的连接），字节 */
+  sessionUp: number
+  sessionDown: number
+  /** 正在走代理节点的连接数（直连不计入） */
   connections: number
 }
 
@@ -137,7 +142,7 @@ export const DEFAULT_MIXED_PORT = 7890
 export const DEFAULT_CONTROLLER_PORT = 9090
 
 export function emptyTraffic(): ProxyTraffic {
-  return { up: 0, down: 0, totalUp: 0, totalDown: 0, connections: 0 }
+  return { up: 0, down: 0, totalUp: 0, totalDown: 0, sessionUp: 0, sessionDown: 0, connections: 0 }
 }
 
 export function emptyProfile(): ProxyProfileInfo {

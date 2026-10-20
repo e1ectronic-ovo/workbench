@@ -69,7 +69,11 @@ export class ProxyService {
   private readonly core = new MihomoCore()
   private groups: ProxyGroup[] = []
   private traffic: ProxyTraffic = emptyTraffic()
-  private totals: { up: number; down: number; at: number } | null = null
+  /** 本次内核运行以来实际走代理节点的累计消耗（字节），stop/重启时清零 */
+  private sessionUp = 0
+  private sessionDown = 0
+  /** 上一拍活跃代理连接的累计和，用差值算速率与会话增量 */
+  private connSums: { up: number; down: number; at: number } | null = null
   private pollTimer: NodeJS.Timeout | null = null
   private pollBusy = false
   private tick = 0
@@ -207,6 +211,11 @@ export class ProxyService {
       this.crashCount = 0
       this.startedAt = Date.now()
       this.version = (await client.version().catch(() => null))?.version ?? null
+      // 新内核进程的连接计数从零开始，会话统计同步归零
+      this.sessionUp = 0
+      this.sessionDown = 0
+      this.connSums = null
+      this.traffic = emptyTraffic()
 
       if (settings.mode !== 'rule') {
         await client.setMode(settings.mode).catch(() => {})
@@ -247,7 +256,9 @@ export class ProxyService {
     this.status = 'stopped'
     this.error = null
     this.traffic = emptyTraffic()
-    this.totals = null
+    this.sessionUp = 0
+    this.sessionDown = 0
+    this.connSums = null
     this.groups = []
     this.emit()
     return { ok: true }
@@ -345,27 +356,52 @@ export class ProxyService {
     if (!client || this.pollBusy || this.status !== 'running') return
     this.pollBusy = true
     try {
-      const connections = await client.connections()
+      const payload = await client.connections()
+      const list = Array.isArray(payload.connections) ? payload.connections : []
       const now = Date.now()
-      const totalUp = connections.uploadTotal ?? 0
-      const totalDown = connections.downloadTotal ?? 0
-      const list = Array.isArray(connections.connections) ? connections.connections.length : 0
 
-      if (this.totals) {
-        const seconds = Math.max((now - this.totals.at) / 1000, 0.2)
-        const up = Math.max(totalUp - this.totals.up, 0)
-        const down = Math.max(totalDown - this.totals.down, 0)
+      // 只统计实际走代理节点的流量：chains[0] 是连接的最终出站，
+      // DIRECT 表示该连接由内核直连（如规则模式下访问国内站点），不计入统计
+      let proxiedUp = 0
+      let proxiedDown = 0
+      let proxiedCount = 0
+      for (const conn of list) {
+        if (!Array.isArray(conn.chains) || conn.chains.length === 0) continue
+        if (conn.chains[0] === 'DIRECT') continue
+        proxiedUp += conn.upload ?? 0
+        proxiedDown += conn.download ?? 0
+        proxiedCount++
+      }
+
+      if (this.connSums) {
+        const seconds = Math.max((now - this.connSums.at) / 1000, 0.2)
+        // 已结束连接的流量在结束前的每一拍都已累进会话值，
+        // 差值只反映本间隔内仍活跃连接的新增，所以连接关闭不会把会话总量吃掉
+        const deltaUp = Math.max(proxiedUp - this.connSums.up, 0)
+        const deltaDown = Math.max(proxiedDown - this.connSums.down, 0)
+        this.sessionUp += deltaUp
+        this.sessionDown += deltaDown
         this.traffic = {
-          up: Math.round(up / seconds),
-          down: Math.round(down / seconds),
-          totalUp,
-          totalDown,
-          connections: list
+          up: Math.round(deltaUp / seconds),
+          down: Math.round(deltaDown / seconds),
+          totalUp: payload.uploadTotal ?? 0,
+          totalDown: payload.downloadTotal ?? 0,
+          sessionUp: Math.round(this.sessionUp),
+          sessionDown: Math.round(this.sessionDown),
+          connections: proxiedCount
         }
       } else {
-        this.traffic = { up: 0, down: 0, totalUp, totalDown, connections: list }
+        this.traffic = {
+          up: 0,
+          down: 0,
+          totalUp: payload.uploadTotal ?? 0,
+          totalDown: payload.downloadTotal ?? 0,
+          sessionUp: Math.round(this.sessionUp),
+          sessionDown: Math.round(this.sessionDown),
+          connections: proxiedCount
+        }
       }
-      this.totals = { up: totalUp, down: totalDown, at: now }
+      this.connSums = { up: proxiedUp, down: proxiedDown, at: now }
 
       this.tick++
       // 节点列表变化不频繁，两拍刷一次即可
