@@ -12,6 +12,10 @@ export interface ModuleState {
   url: string
   title: string
   loading: boolean
+  /** 该模块下任一标签正在发声 */
+  audible?: boolean
+  /** 该模块下任一标签被静音 */
+  muted?: boolean
 }
 
 const MODULES_KEY = 'workbench.modules'
@@ -141,16 +145,12 @@ export const useModulesStore = defineStore('modules', () => {
     if (moduleList.value.some((m) => m.id === id)) activeId.value = id
   }
 
-  /** 侧栏点击：回到该网站配置的首页地址 */
+  /** 侧栏点击：仅切换到该模块，保留上次的浏览进度（不再重置到首页） */
   function openFromSidebar(id: string) {
     const m = moduleList.value.find((x) => x.id === id)
     if (!m) return
     activeId.value = id
-    states.value = {
-      ...states.value,
-      [id]: { url: m.url, title: m.name, loading: false }
-    }
-    persistStates()
+    ensureState(m)
   }
 
   function setUrl(id: string, url: string) {

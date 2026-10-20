@@ -22,16 +22,25 @@
 
         <div class="content-area" :class="{ 'is-home': view === 'home' }">
           <HomeDashboard v-show="view === 'home'" />
-          <Transition name="fade-view" mode="out-in">
-            <div v-if="view === 'module' && store.active" key="module" class="content-fill">
-              <div class="workspaces">
-                <Workspace
-                  :key="`${store.activeId}:${workspaceKey}`"
-                  :module="store.active"
-                />
-              </div>
+
+          <!--
+            模块工作区常驻：首次进入时挂载，之后仅切换显隐，
+            避免侧栏切换 / 进入设置再返回时重建 webview 导致页面刷新。
+          -->
+          <div v-show="view === 'module'" class="content-fill">
+            <div class="workspaces">
+              <Workspace
+                v-for="m in liveModules"
+                :key="m.id"
+                v-show="m.id === store.activeId"
+                :module="m"
+                :active="view === 'module' && m.id === store.activeId"
+              />
             </div>
-            <Settings v-else-if="view === 'settings'" key="settings" />
+          </div>
+
+          <Transition name="fade-view" mode="out-in">
+            <Settings v-if="view === 'settings'" key="settings" />
           </Transition>
         </div>
 
@@ -42,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import Workspace from './components/Workspace.vue'
@@ -63,7 +72,16 @@ const store = useModulesStore()
 const settings = useSettingsStore()
 useReminderSync()
 const view = ref<View>('home')
-const workspaceKey = ref(0)
+
+/** 已打开过的模块：工作区实例常驻，切换时不再销毁重建 */
+const liveIds = ref<string[]>([])
+
+const liveModules = computed(() => store.modules.filter((m) => liveIds.value.includes(m.id)))
+
+function ensureLive(id: string) {
+  if (!id) return
+  if (!liveIds.value.includes(id)) liveIds.value = [...liveIds.value, id]
+}
 
 const sceneVariant = computed(() => {
   const theme = settings.appearance.theme
@@ -71,10 +89,19 @@ const sceneVariant = computed(() => {
 })
 
 function onSelect(id: string) {
+  ensureLive(id)
   store.openFromSidebar(id)
-  workspaceKey.value++
   view.value = 'module'
 }
+
+// 模块被外部切换（如删除后的兜底激活）时也要保证工作区已挂载
+watch(
+  () => store.activeId,
+  (id) => {
+    if (view.value !== 'module') return
+    ensureLive(id)
+  }
+)
 
 function onHome() {
   view.value = 'home'
