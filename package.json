@@ -17,6 +17,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "icons": "node scripts/generate-icons.mjs",
+    "icons:refresh": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/refresh-icon-cache.ps1",
     "whale-assets": "node scripts/optimize-whale-assets.mjs",
     "maid-assets": "node scripts/fetch-maid-atelier-assets.mjs"
   },
