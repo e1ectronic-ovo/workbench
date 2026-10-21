@@ -1,12 +1,8 @@
 /**
- * 生成桌面应用图标：矢量底板（resources/icon-frame.svg）+ 鲸鱼娘头像图层，合成 1024 主图，
- * 再导出 resources/icon.png（512）与多尺寸 resources/icon.ico（16~256）。
+ * 从用户提供的 EVA 初号机参考图生成应用图标与托盘图标。
  *
- * 头像源图为 256px（src/renderer/src/assets/whale/logo.png），采用 lanczos3 放大 + 轻量锐化，
- * 在 32px 以上仍保持清晰；ico 各尺寸均由 1024 主图单独降采样，避免逐级缩放的模糊累积。
- *
- * 该脚本已接入构建流程（npm run build 会先跑一遍），因此打包产物里的图标永远与源图一致。
- * 产物是确定性的、且只在内容变化时写盘，所以重复执行不会污染 git 或触发多余的重打包。
+ * 不再自行重绘矢量，主图标与托盘图标都直接从 resources/eva-reference.png
+ * 裁切：主图标使用紫色圆角底板；托盘使用紫色/绿色圆环，并裁成透明圆形。
  *
  * Run: npm run icons
  */
@@ -17,27 +13,29 @@ import sharp from 'sharp'
 import pngToIco from 'png-to-ico'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const framePath = join(root, 'resources', 'icon-frame.svg')
-const mascotPath = join(root, 'src', 'renderer', 'src', 'assets', 'whale', 'logo.png')
+const referencePath = join(root, 'resources', 'eva-reference.png')
 const pngPath = join(root, 'resources', 'icon.png')
 const icoPath = join(root, 'resources', 'icon.ico')
 const trayPath = join(root, 'resources', 'tray.ico')
+const trayPngPath = join(root, 'resources', 'tray.png')
+const trayActivePath = join(root, 'resources', 'tray-active.ico')
+const trayActivePngPath = join(root, 'resources', 'tray-active.png')
 
-/** 主图画布尺寸，所有比例都以此为单位计算 */
-const MASTER = 1024
-/** 头像占画布宽度的比例 */
-const MASCOT_RATIO = 0.8
-/** 头像垂直位置（大于 0.5 时整体下沉，视觉重心更稳） */
-const MASCOT_SHIFT = 0.535
-/** ico 内嵌尺寸。256 是 electron-builder 的硬性要求，缺了会直接拒绝打包 */
+const APP_MASTER = 1024
+const APP_RADIUS = 222
+const TRAY_MASTER = 512
 const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
-/**
- * 托盘 ico 尺寸。Windows 通知区在 100%~400% 缩放下取 16/20/24/32/40/48，
- * 再大就是浪费体积；单独出一份，Electron 即使取最大条目也只有 64，降采样到 16 依然清晰。
- */
 const TRAY_SIZES = [16, 20, 24, 32, 40, 48, 64]
 
-/** 内容没变就不写盘：保持 mtime，避免 git 抖动与 electron-builder 无谓重打包 */
+/** 参考图中的桌面客户端图标（436×436，含外发光底板） */
+const APP_CROP = { left: 246, top: 80, width: 436, height: 436 }
+/** 参考图右上角“正常状态”托盘图标 */
+const TRAY_IDLE_CROP = { left: 1014, top: 234, width: 188, height: 188 }
+/** 参考图下方“激发中”绿色圆环托盘图标 */
+const TRAY_ACTIVE_CROP = { left: 340, top: 690, width: 152, height: 152 }
+
+const reference = readFileSync(referencePath)
+
 function writeIfChanged(path, buf) {
   try {
     if (readFileSync(path).equals(buf)) return false
@@ -48,10 +46,6 @@ function writeIfChanged(path, buf) {
   return true
 }
 
-/**
- * 校验 ico 目录表：文件数、各尺寸是否齐全。
- * electron-builder 只认「包含 256×256 条目」的 ico，这里提前拦住，别等到打包阶段才报错。
- */
 function assertIco(buf, expected, label) {
   if (buf.length < 6) throw new Error(`${label} 头部不完整`)
   const count = buf.readUInt16LE(4)
@@ -59,7 +53,6 @@ function assertIco(buf, expected, label) {
   for (let i = 0; i < count; i += 1) {
     const off = 6 + i * 16
     if (off + 16 > buf.length) throw new Error(`${label} 目录表被截断`)
-    // 宽高各占 1 字节，0 表示 256
     entries.push({ width: buf[off] || 256, height: buf[off + 1] || 256 })
   }
   const missing = expected.filter((s) => !entries.some((e) => e.width === s && e.height === s))
@@ -67,80 +60,98 @@ function assertIco(buf, expected, label) {
   return entries.map((e) => e.width)
 }
 
-const frame = readFileSync(framePath)
-if (!frame.length) throw new Error('resources/icon-frame.svg 为空')
-
-const box = Math.round(MASTER * MASCOT_RATIO)
-const left = Math.round((MASTER - box) / 2)
-const top = Math.round(MASTER * 0.5 - box * MASCOT_SHIFT)
-
-/** 放大头像：lanczos3 + 轻度锐化，补回插值损失的边缘 */
-async function loadMascot() {
-  return sharp(mascotPath)
-    .resize(box, box, { kernel: 'lanczos3' })
-    .sharpen({ sigma: 0.85, m1: 0.5, m2: 2 })
+async function appMaster() {
+  const rotated = await sharp(reference)
+    .extract(APP_CROP)
+    .rotate(-1.05, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(APP_MASTER, APP_MASTER, { fit: 'fill', kernel: 'lanczos3' })
     .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true })
-}
-
-/** 用头像的 alpha 生成投影：只保留角色轮廓，染成深色后模糊 */
-async function buildShadow({ data, info }) {
-  const px = Buffer.from(data)
-  for (let i = 0; i < px.length; i += 4) {
-    px[i] = 3
-    px[i + 1] = 12
-    px[i + 2] = 24
-    px[i + 3] = Math.round(px[i + 3] * 0.6)
-  }
-  return sharp(px, { raw: { width: info.width, height: info.height, channels: 4 } })
-    .blur(MASTER * 0.02)
     .png()
     .toBuffer()
+  const mask = Buffer.from(
+    `<svg width="${APP_MASTER}" height="${APP_MASTER}" xmlns="http://www.w3.org/2000/svg">` +
+      `<rect width="${APP_MASTER}" height="${APP_MASTER}" rx="${APP_RADIUS}" fill="white"/>` +
+      '</svg>',
+  )
+  return sharp(rotated)
+    .composite([{ input: mask, blend: 'dest-in' }])
+    .png()
+    .toBuffer()
+}
+
+async function trayMaster(crop) {
+  const cropped = await sharp(reference)
+    .extract(crop)
+    .resize(TRAY_MASTER, TRAY_MASTER, { fit: 'fill', kernel: 'lanczos3' })
+    .ensureAlpha()
+    .png()
+    .toBuffer()
+  const radius = TRAY_MASTER / 2 - 2
+  const mask = Buffer.from(
+    `<svg width="${TRAY_MASTER}" height="${TRAY_MASTER}" xmlns="http://www.w3.org/2000/svg">` +
+      `<circle cx="${TRAY_MASTER / 2}" cy="${TRAY_MASTER / 2}" r="${radius}" fill="white"/>` +
+      '</svg>',
+  )
+  return sharp(cropped)
+    .composite([{ input: mask, blend: 'dest-in' }])
+    .png()
+    .toBuffer()
+}
+
+async function icoFrom(master, sizes) {
+  const buffers = await Promise.all(
+    sizes.map((s) => sharp(master).resize(s, s, { kernel: 'lanczos3' }).png().toBuffer()),
+  )
+  return pngToIco(buffers)
 }
 
 async function main() {
-  const raw = await loadMascot()
-  const shadow = await buildShadow(raw)
-  const mascot = await sharp(raw.data, {
-    raw: { width: raw.info.width, height: raw.info.height, channels: 4 }
-  })
-    .png()
-    .toBuffer()
+  if (!reference.length) throw new Error('resources/eva-reference.png 为空')
+  const metadata = await sharp(reference).metadata()
+  if ((metadata.width ?? 0) < 1200 || (metadata.height ?? 0) < 840) {
+    throw new Error(`参考图尺寸异常：${metadata.width}×${metadata.height}`)
+  }
 
-  const master = await sharp(frame)
-    .composite([
-      { input: shadow, left, top: top + Math.round(MASTER * 0.016) },
-      { input: mascot, left, top }
-    ])
-    .png()
-    .toBuffer()
-
-  const png = await sharp(master).resize(512, 512, { kernel: 'lanczos3' }).png().toBuffer()
+  const app = await appMaster()
+  const png = await sharp(app).resize(512, 512, { kernel: 'lanczos3' }).png().toBuffer()
   const pngMeta = await sharp(png).metadata()
   if (pngMeta.width !== 512 || pngMeta.height !== 512) {
     throw new Error(`icon.png 尺寸异常：${pngMeta.width}×${pngMeta.height}`)
   }
   const pngChanged = writeIfChanged(pngPath, png)
 
-  const pngBuffers = await Promise.all(
-    ICO_SIZES.map((s) => sharp(master).resize(s, s, { kernel: 'lanczos3' }).png().toBuffer())
-  )
-  const ico = await pngToIco(pngBuffers)
+  const ico = await icoFrom(app, ICO_SIZES)
   const icoSizes = assertIco(ico, ICO_SIZES, 'icon.ico')
   const icoChanged = writeIfChanged(icoPath, ico)
 
-  const trayBuffers = await Promise.all(
-    TRAY_SIZES.map((s) => sharp(master).resize(s, s, { kernel: 'lanczos3' }).png().toBuffer())
-  )
-  const tray = await pngToIco(trayBuffers)
+  const trayIdleMaster = await trayMaster(TRAY_IDLE_CROP)
+  const trayActiveMaster = await trayMaster(TRAY_ACTIVE_CROP)
+  const trayPng = await sharp(trayIdleMaster)
+    .resize(256, 256, { kernel: 'lanczos3' })
+    .png()
+    .toBuffer()
+  const trayActivePng = await sharp(trayActiveMaster)
+    .resize(256, 256, { kernel: 'lanczos3' })
+    .png()
+    .toBuffer()
+
+  const tray = await icoFrom(trayIdleMaster, TRAY_SIZES)
+  const trayActive = await icoFrom(trayActiveMaster, TRAY_SIZES)
   const traySizes = assertIco(tray, TRAY_SIZES, 'tray.ico')
+  const trayActiveSizes = assertIco(trayActive, TRAY_SIZES, 'tray-active.ico')
+
+  const trayPngChanged = writeIfChanged(trayPngPath, trayPng)
+  const trayActivePngChanged = writeIfChanged(trayActivePngPath, trayActivePng)
   const trayChanged = writeIfChanged(trayPath, tray)
+  const trayActiveChanged = writeIfChanged(trayActivePath, trayActive)
 
   const tag = (changed) => (changed ? '已更新' : '未变化')
-  console.log(`icon.png  512×512            ${tag(pngChanged)}`)
-  console.log(`icon.ico  ${icoSizes.join('/')}  ${tag(icoChanged)}`)
-  console.log(`tray.ico  ${traySizes.join('/')}      ${tag(trayChanged)}`)
+  console.log(`icon.png        512×512              ${tag(pngChanged)}`)
+  console.log(`icon.ico        ${icoSizes.join('/')}  ${tag(icoChanged)}`)
+  console.log(`tray.png        256×256              ${tag(trayPngChanged)}`)
+  console.log(`tray.ico        ${traySizes.join('/')}  ${tag(trayChanged)}`)
+  console.log(`tray-active.png 256×256              ${tag(trayActivePngChanged)}`)
+  console.log(`tray-active.ico ${trayActiveSizes.join('/')}  ${tag(trayActiveChanged)}`)
 }
 
 main().catch((err) => {

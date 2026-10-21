@@ -11,7 +11,7 @@ import {
   type ReminderPayload
 } from './reminders'
 import { ProxyService, registerProxyIpc } from './proxy'
-import { destroyTray, setupTray } from './tray'
+import { destroyTray, setTrayActive, setupTray } from './tray'
 import { registerUpdateIpc, updateService } from './updater'
 import {
   installCloseBehavior,
@@ -102,7 +102,11 @@ function loginItemPath(): string {
 function loginItemArgs(openAsHidden: boolean): string[] {
   const args: string[] = []
   if (isDev) {
-    args.push(...process.argv.slice(1).filter((a) => a !== '--' && a !== '--hidden'))
+    // 开发态 execPath 是 node_modules/electron/dist/electron.exe，必须显式带上绝对应用路径。
+    // 这里不能沿用 process.argv.slice(1)：`electron .` 拿到的是相对路径 "."，
+    // 开机自启由系统以 C:\WINDOWS\System32 为工作目录拉起，"." 会被解析成 System32，
+    // 于是报 "Unable to find Electron app at C:\WINDOWS\System32" 后直接退出。
+    args.push(app.getAppPath())
   }
   if (openAsHidden) args.push('--hidden')
   return args
@@ -154,12 +158,25 @@ function appIconPath(): string {
 
 /**
  * 托盘图标。Windows 通知区在 100%~400% 缩放下取 16~48px，用单独的小尺寸 ico
- * 才能各档都清晰；其他平台托盘尺寸不固定，退回主图标由系统缩放。
+ * 才能各档都清晰；其他平台使用同一套透明圆形 PNG。
  */
-function trayIconPath(): string {
-  if (process.platform !== 'win32') return appIconPath()
-  const ico = join(resourcesDir(), 'tray.ico')
-  return existsSync(ico) ? ico : appIconPath()
+function trayIconPaths(): { idle: string; active: string } {
+  const fallback = appIconPath()
+  const png = join(resourcesDir(), 'tray.png')
+  const activePng = join(resourcesDir(), 'tray-active.png')
+
+  if (process.platform === 'win32') {
+    const ico = join(resourcesDir(), 'tray.ico')
+    const activeIco = join(resourcesDir(), 'tray-active.ico')
+    const idle = existsSync(ico) ? ico : existsSync(png) ? png : fallback
+    return {
+      idle,
+      active: existsSync(activeIco) ? activeIco : existsSync(activePng) ? activePng : idle
+    }
+  }
+
+  const idle = existsSync(png) ? png : fallback
+  return { idle, active: existsSync(activePng) ? activePng : idle }
 }
 
 function iconsDir(): string {
@@ -544,11 +561,12 @@ app.whenReady().then(() => {
   registerUpdateIpc()
   createWindow()
 
-  setupTray(trayIconPath(), {
+  setupTray(trayIconPaths(), {
     show: focusMainWindow,
     requestQuit,
     productName: PRODUCT_NAME
   })
+  proxyService.onStateChange = setTrayActive
 
   void proxyService.init()
   updateService.init()

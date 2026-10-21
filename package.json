@@ -1,6 +1,6 @@
 {
   "name": "workbench",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Whaletide (鲸汐) - personal desktop workbench with dashboard, site modules and built-in proxy",
   "private": true,
   "main": "out/main/index.js",
@@ -37,10 +37,13 @@
         "from": "resources",
         "to": ".",
         "filter": [
-      "icon.png",
-      "icon.ico",
-      "tray.ico"
-    ]
+          "icon.png",
+          "icon.ico",
+          "tray.ico",
+          "tray.png",
+          "tray-active.ico",
+          "tray-active.png"
+        ]
       },
       {
         "from": "resources/core",

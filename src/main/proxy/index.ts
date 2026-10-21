@@ -86,6 +86,8 @@ export class ProxyService {
   /** 正在测速的组名与批次令牌，用于旧批次自动作废 */
   private testingGroup: string | null = null
   private testToken = 0
+  /** 系统代理实际启停时，同步通知托盘切换对应颜色 */
+  onStateChange?: (active: boolean) => void
 
   async init(): Promise<void> {
     // 上次异常退出可能把系统代理指向了不存在的内核，先还原
@@ -791,6 +793,7 @@ export class ProxyService {
   /** 广播状态变化；测速进度等带载荷的事件走 emitEvent */
   private emit(): void {
     this.emitEvent('proxy:state')
+    this.onStateChange?.(this.systemProxyOn)
   }
 
   private emitEvent(channel: string, payload?: unknown): void {
