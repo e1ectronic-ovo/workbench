@@ -98,8 +98,12 @@
 > 分发时请随包提供其许可证文本与源码获取方式。
 
 ### 外观
-- 10 套主题：`oled` / `slate` / `dim` / `light` / `paper` / `whale` / `whale-night` / `orca` / `orca-night` / `custom`。
-- 鲸鱼 / 虎鲸（whale / orca）为「场景主题」，会在首页叠加动态装饰背景。
+- 7 套主题：`whale` / `whale-night` / `orca` / `orca-night` / `eva` / `eva-red` / `custom`。
+- 鲸鱼 / 虎鲸（whale / orca）为「位图场景主题」，会在首页叠加场景背景与角色立绘。
+- 初号机（eva）与警戒态（eva-red）为「HUD 皮肤主题」，共用同一份 `styles/eva-theme.css`：
+  直角切角容器、六边形壁面、刻度尺与危险条纹，颜色全部走 `--eva-*` 变量。
+  `eva` 为紫/荧光绿 + 初号机立绘；`eva-red` 为黑/血红 + NERV 控制台壁纸（低透明度作环境底）。
+  装饰层在 `EvaThemeDecor.vue`，用 `variant` 切换两套。
 - 支持强调色、自定义主题配色、紧凑侧栏、状态栏与标签开关。
 
 ### 提醒

@@ -535,6 +535,8 @@ import { idleUpdateState, type UpdateState } from '../../../common/update'
 import {
   DEFAULT_CUSTOM_COLORS,
   useSettingsStore,
+  EVA_ACCENT,
+  NERV_ACCENT,
   ORCA_ACCENT,
   WHALE_ACCENT,
   type CustomThemeColors,
@@ -545,6 +547,7 @@ import maidPreviewDay from '../assets/maid-atelier/preview-day.webp'
 import maidPreviewNight from '../assets/maid-atelier/preview-night.webp'
 import orcaPreviewDay from '../assets/orca-link/light-hero.webp'
 import orcaPreviewNight from '../assets/orca-link/dark-hero.webp'
+import evaPreview from '../assets/eva/eva-preview.png'
 
 const modulesStore = useModulesStore()
 const settings = useSettingsStore()
@@ -745,11 +748,19 @@ const themeOptions: {
     preview: '',
     previewImage: orcaPreviewNight
   },
-  { id: 'light', label: '浅色清爽', desc: '系统浅灰', preview: '#f5f5f7' },
-  { id: 'oled', label: 'OLED 深黑', desc: '省电、对比强', preview: '#1c1c1e' },
-  { id: 'slate', label: '石板灰蓝', desc: '偏桌面工具感', preview: '#0f1419' },
-  { id: 'dim', label: '柔和暗色', desc: '降低对比', preview: '#121212' },
-  { id: 'paper', label: '纸感浅色', desc: '暖白阅读', preview: '#f7f3eb' },
+  {
+    id: 'eva',
+    label: '初号机 · EVA-01',
+    desc: '紫绿机体 · MAGI 终端',
+    preview: '',
+    previewImage: evaPreview
+  },
+  {
+    id: 'eva-red',
+    label: '警戒态 · NERV',
+    desc: '血红控制台 · 同级警报',
+    preview: 'linear-gradient(135deg, #1c0a0d 0%, #a01f24 58%, #ff2d2d 100%)'
+  },
   { id: 'custom', label: '自定义', desc: '自己调配背景与侧栏颜色', preview: 'linear-gradient(135deg, #dce8f5, #ffffff)' }
 ]
 
@@ -805,6 +816,8 @@ function onThemeSelect(id: ThemeId) {
   const patch: { theme: ThemeId; accent?: string; custom?: CustomThemeColors } = { theme: id }
   if (id === 'whale' || id === 'whale-night') patch.accent = WHALE_ACCENT
   if (id === 'orca' || id === 'orca-night') patch.accent = ORCA_ACCENT
+  if (id === 'eva') patch.accent = EVA_ACCENT
+  if (id === 'eva-red') patch.accent = NERV_ACCENT
   if (id === 'custom') patch.custom = { ...customColors.value }
   settings.patchAppearance(patch)
 }

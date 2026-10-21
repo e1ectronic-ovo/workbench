@@ -2,21 +2,27 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export type ThemeId =
-  | 'oled'
-  | 'slate'
-  | 'dim'
-  | 'light'
-  | 'paper'
   | 'whale'
   | 'whale-night'
   | 'orca'
   | 'orca-night'
+  | 'eva'
+  | 'eva-red'
   | 'custom'
 
+/** 走 WhaleThemeDecor（位图场景层）的主题 */
 export type SceneThemeId = 'whale' | 'whale-night' | 'orca' | 'orca-night'
 
-export function isSceneTheme(id: ThemeId): id is SceneThemeId {
+/** 走 EvaThemeDecor（EVA 皮肤层）的主题 */
+export type EvaThemeId = 'eva' | 'eva-red'
+
+/** 位图场景皮肤（女仆工坊 / 虎鲸链路），不含 EVA */
+export function isPathSceneTheme(id: ThemeId): id is SceneThemeId {
   return id === 'whale' || id === 'whale-night' || id === 'orca' || id === 'orca-night'
+}
+
+export function isEvaTheme(id: ThemeId): id is EvaThemeId {
+  return id === 'eva' || id === 'eva-red'
 }
 export type DensityId = 'comfortable' | 'compact'
 
@@ -38,6 +44,10 @@ export interface AppearanceSettings {
 
 export const WHALE_ACCENT = '#C5A468'
 export const ORCA_ACCENT = '#086CFF'
+/** EVA-01 的荧光绿，界面里的唯一高亮色 */
+export const EVA_ACCENT = '#A3FF12'
+/** 警戒态的血红，等同 --eva-key */
+export const NERV_ACCENT = '#FF2D2D'
 
 export const DEFAULT_CUSTOM_COLORS: CustomThemeColors = {
   bg: '#eef4fc',
@@ -73,106 +83,14 @@ interface ThemeTokens {
 const APPEARANCE_KEY = 'workbench.appearance'
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {
-  theme: 'light',
-  accent: '#007AFF',
+  theme: 'whale',
+  accent: WHALE_ACCENT,
   density: 'comfortable',
   showStatusBar: true,
   showModuleLabels: true
 }
 
 const THEMES: Record<ThemeId, ThemeTokens> = {
-  oled: {
-    bg: '#1c1c1e',
-    bgElevated: '#2c2c2e',
-    surface: '#2c2c2e',
-    surfaceSecondary: '#252527',
-    surfaceRaised: '#3a3a3c',
-    surfaceHover: 'rgba(255, 255, 255, 0.06)',
-    surfaceActive: 'rgba(255, 255, 255, 0.08)',
-    fillTertiary: 'rgba(118, 118, 128, 0.24)',
-    navHover: 'rgba(255, 255, 255, 0.06)',
-    navSelected: 'rgba(255, 255, 255, 0.1)',
-    navIcon: '#aeaeb2',
-    sidebarBg: '#252527',
-    border: 'rgba(255, 255, 255, 0.06)',
-    borderStrong: 'rgba(255, 255, 255, 0.12)',
-    text: '#f5f5f7',
-    textSecondary: '#aeaeb2',
-    textMuted: '#8e8e93',
-    onAccent: '#04110f',
-    scheme: 'dark',
-    chromeBg: '#1c1c1e',
-    chromeFg: '#aeaeb2'
-  },
-  slate: {
-    bg: '#0f1419',
-    bgElevated: '#151b22',
-    surface: '#1a222c',
-    surfaceSecondary: '#151b22',
-    surfaceRaised: '#222b36',
-    surfaceHover: 'rgba(255, 255, 255, 0.05)',
-    surfaceActive: 'rgba(255, 255, 255, 0.08)',
-    fillTertiary: 'rgba(118, 118, 128, 0.24)',
-    navHover: 'rgba(255, 255, 255, 0.05)',
-    navSelected: 'rgba(255, 255, 255, 0.09)',
-    navIcon: '#9aa8b6',
-    sidebarBg: '#13181e',
-    border: 'rgba(255, 255, 255, 0.06)',
-    borderStrong: 'rgba(255, 255, 255, 0.12)',
-    text: '#e8eef4',
-    textSecondary: '#9aa8b6',
-    textMuted: '#6b7a8a',
-    onAccent: '#04110f',
-    scheme: 'dark',
-    chromeBg: '#151b22',
-    chromeFg: '#9aa8b6'
-  },
-  dim: {
-    bg: '#121212',
-    bgElevated: '#1a1a1a',
-    surface: '#222222',
-    surfaceSecondary: '#1a1a1a',
-    surfaceRaised: '#2a2a2a',
-    surfaceHover: 'rgba(255, 255, 255, 0.06)',
-    surfaceActive: 'rgba(255, 255, 255, 0.08)',
-    fillTertiary: 'rgba(118, 118, 128, 0.24)',
-    navHover: 'rgba(255, 255, 255, 0.06)',
-    navSelected: 'rgba(255, 255, 255, 0.1)',
-    navIcon: '#a3a3a3',
-    sidebarBg: '#181818',
-    border: 'rgba(255, 255, 255, 0.06)',
-    borderStrong: 'rgba(255, 255, 255, 0.12)',
-    text: '#f0f0f0',
-    textSecondary: '#a3a3a3',
-    textMuted: '#737373',
-    onAccent: '#04110f',
-    scheme: 'dark',
-    chromeBg: '#1a1a1a',
-    chromeFg: '#a3a3a3'
-  },
-  light: {
-    bg: '#F5F5F7',
-    bgElevated: '#F5F5F7',
-    surface: '#FFFFFF',
-    surfaceSecondary: '#F8F8FA',
-    surfaceRaised: '#FFFFFF',
-    surfaceHover: 'rgba(0, 0, 0, 0.04)',
-    surfaceActive: 'rgba(0, 0, 0, 0.06)',
-    fillTertiary: 'rgba(118, 118, 128, 0.12)',
-    navHover: 'rgba(0, 0, 0, 0.04)',
-    navSelected: 'rgba(0, 0, 0, 0.06)',
-    navIcon: '#6E6E73',
-    sidebarBg: '#ECECEF',
-    border: 'rgba(0, 0, 0, 0.06)',
-    borderStrong: 'rgba(0, 0, 0, 0.1)',
-    text: '#1D1D1F',
-    textSecondary: '#6E6E73',
-    textMuted: '#86868B',
-    onAccent: '#FFFFFF',
-    scheme: 'light',
-    chromeBg: '#F5F5F7',
-    chromeFg: '#6E6E73'
-  },
   whale: {
     bg: '#0a1220',
     bgElevated: 'rgba(12, 22, 42, 0.82)',
@@ -265,6 +183,52 @@ const THEMES: Record<ThemeId, ThemeTokens> = {
     chromeBg: 'rgba(16, 20, 28, 0.82)',
     chromeFg: '#9aa8bc'
   },
+  eva: {
+    bg: '#08070d',
+    bgElevated: 'rgba(13, 9, 24, 0.9)',
+    surface: 'rgba(26, 17, 46, 0.86)',
+    surfaceSecondary: 'rgba(10, 8, 19, 0.8)',
+    surfaceRaised: 'rgba(33, 22, 57, 0.92)',
+    surfaceHover: 'rgba(139, 92, 246, 0.16)',
+    surfaceActive: 'rgba(139, 92, 246, 0.24)',
+    fillTertiary: 'rgba(139, 92, 246, 0.14)',
+    navHover: 'rgba(139, 92, 246, 0.15)',
+    navSelected: 'rgba(163, 255, 18, 0.13)',
+    navIcon: '#9d7fc8',
+    sidebarBg: 'rgba(17, 11, 32, 0.46)',
+    border: 'rgba(139, 92, 246, 0.28)',
+    borderStrong: 'rgba(139, 92, 246, 0.46)',
+    text: '#f1ebff',
+    textSecondary: '#bca8d8',
+    textMuted: '#8b78a8',
+    onAccent: '#111607',
+    scheme: 'dark',
+    chromeBg: 'rgba(8, 7, 13, 0.9)',
+    chromeFg: '#bca8d8'
+  },
+  'eva-red': {
+    bg: '#0a0506',
+    bgElevated: 'rgba(18, 8, 10, 0.9)',
+    surface: 'rgba(38, 13, 15, 0.86)',
+    surfaceSecondary: 'rgba(12, 6, 7, 0.8)',
+    surfaceRaised: 'rgba(48, 16, 19, 0.92)',
+    surfaceHover: 'rgba(255, 45, 45, 0.12)',
+    surfaceActive: 'rgba(255, 45, 45, 0.2)',
+    fillTertiary: 'rgba(255, 45, 45, 0.12)',
+    navHover: 'rgba(255, 45, 45, 0.13)',
+    navSelected: 'rgba(255, 45, 45, 0.16)',
+    navIcon: '#c08484',
+    sidebarBg: 'rgba(24, 9, 11, 0.5)',
+    border: 'rgba(255, 45, 45, 0.26)',
+    borderStrong: 'rgba(255, 45, 45, 0.42)',
+    text: '#f7e9e7',
+    textSecondary: '#d8bdbc',
+    textMuted: '#a88686',
+    onAccent: '#1b0606',
+    scheme: 'dark',
+    chromeBg: 'rgba(10, 5, 6, 0.9)',
+    chromeFg: '#d8bdbc'
+  },
   custom: {
     bg: '#eef4fc',
     bgElevated: '#eef4fc',
@@ -288,29 +252,6 @@ const THEMES: Record<ThemeId, ThemeTokens> = {
     chromeBg: '#eef4fc',
     chromeFg: '#4a6080'
   },
-  paper: {
-    bg: '#f7f3eb',
-    bgElevated: '#fffcf7',
-    surface: '#fffcf7',
-    surfaceSecondary: '#f3ede3',
-    surfaceRaised: '#fffcf7',
-    surfaceHover: 'rgba(60, 45, 25, 0.05)',
-    surfaceActive: 'rgba(60, 45, 25, 0.08)',
-    fillTertiary: 'rgba(118, 118, 128, 0.12)',
-    navHover: 'rgba(60, 45, 25, 0.05)',
-    navSelected: 'rgba(60, 45, 25, 0.08)',
-    navIcon: '#8a8073',
-    sidebarBg: '#ebe5da',
-    border: 'rgba(60, 45, 25, 0.08)',
-    borderStrong: 'rgba(60, 45, 25, 0.14)',
-    text: '#1c1710',
-    textSecondary: '#5c5348',
-    textMuted: '#8a8073',
-    onAccent: '#ffffff',
-    scheme: 'light',
-    chromeBg: '#fffcf7',
-    chromeFg: '#5c5348'
-  }
 }
 
 function parseHexColor(hex: string): [number, number, number] | null {
@@ -365,7 +306,7 @@ function buildCustomTokens(c: CustomThemeColors): ThemeTokens {
 
 function resolveThemeTokens(a: AppearanceSettings): ThemeTokens {
   if (a.theme === 'custom' && a.custom) return buildCustomTokens(a.custom)
-  return THEMES[a.theme] ?? THEMES.light
+  return THEMES[a.theme] ?? THEMES.whale
 }
 
 function loadAppearance(): AppearanceSettings {

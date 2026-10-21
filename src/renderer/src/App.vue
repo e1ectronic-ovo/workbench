@@ -1,6 +1,7 @@
 <template>
   <div class="workbench">
-    <WhaleThemeDecor v-if="sceneVariant" :variant="sceneVariant" />
+    <WhaleThemeDecor v-if="pathVariant" :variant="pathVariant" />
+    <EvaThemeDecor v-else-if="evaVariant" :variant="evaVariant" />
     <header class="window-chrome">
       <WindowControls v-if="customChrome" />
       <div v-else class="mac-traffic-spacer" aria-hidden="true" />
@@ -60,9 +61,10 @@ import HomeDashboard from './components/HomeDashboard.vue'
 import Settings from './components/Settings.vue'
 import WindowControls from './components/WindowControls.vue'
 import WhaleThemeDecor from './components/WhaleThemeDecor.vue'
+import EvaThemeDecor from './components/EvaThemeDecor.vue'
 import { useReminderSync } from './composables/useReminderSync'
 import { useModulesStore } from './stores/modules'
-import { isSceneTheme, useSettingsStore } from './stores/settings'
+import { isEvaTheme, isPathSceneTheme, useSettingsStore } from './stores/settings'
 
 type View = 'home' | 'module' | 'settings'
 
@@ -83,9 +85,15 @@ function ensureLive(id: string) {
   if (!liveIds.value.includes(id)) liveIds.value = [...liveIds.value, id]
 }
 
-const sceneVariant = computed(() => {
+/** 位图场景皮肤（女仆工坊 / 虎鲸链路）——EVA 走自己的装饰层 */
+const pathVariant = computed(() => {
   const theme = settings.appearance.theme
-  return isSceneTheme(theme) ? theme : null
+  return isPathSceneTheme(theme) ? theme : null
+})
+
+const evaVariant = computed(() => {
+  const theme = settings.appearance.theme
+  return isEvaTheme(theme) ? theme : null
 })
 
 function onSelect(id: string) {
