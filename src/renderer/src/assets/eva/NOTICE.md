@@ -1,4 +1,4 @@
-# EVA-01 美术素材声明
+# EVA 美术素材声明
 
 ## unit-01.webp
 
@@ -7,6 +7,18 @@
   未引用任何官方作品名、角色名或画师名。
 - 后处理：`sharp` 裁掉底部 UI 水印条带，缩放至 980px 宽，转 WebP（quality 92）。
 - 用途：仅在 鲸汐（Whaletide）的 EVA 主题装饰层中作为背景立绘使用。
+
+## eva-scene.webp
+
+- 来源：用户本地 Codex DreamSkin 主题 `eva-1` 的背景图（`active-theme/art-20261023-105901-075-22626ab7.png`），由用户提供并加入本项目。
+- 后处理：保持 1672×941 构图，转 WebP（quality 88），用于 EVA 主题的沉浸式窗口背景。
+- 用途：仅在 鲸汐（Whaletide）的 EVA 主题中作为背景场景使用。
+
+## eva-red-scene.webp
+
+- 来源：用户提供的 EVA-02 / 红色警戒态素材图（原始 PNG 3916×2160）。
+- 后处理：缩放至 2048×1130，转 WebP（quality 88），用于红色警戒主题的沉浸式窗口背景。
+- 用途：仅在 鲸汐（Whaletide）的 EVA 红色警戒主题中作为背景场景使用。
 
 ## eva-preview.png
 

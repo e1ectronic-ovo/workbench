@@ -548,6 +548,7 @@ import maidPreviewNight from '../assets/maid-atelier/preview-night.webp'
 import orcaPreviewDay from '../assets/orca-link/light-hero.webp'
 import orcaPreviewNight from '../assets/orca-link/dark-hero.webp'
 import evaPreview from '../assets/eva/eva-preview.png'
+import evaRedScene from '../assets/eva/eva-red-scene.webp'
 
 const modulesStore = useModulesStore()
 const settings = useSettingsStore()
@@ -757,9 +758,10 @@ const themeOptions: {
   },
   {
     id: 'eva-red',
-    label: '警戒态 · NERV',
-    desc: '血红控制台 · 同级警报',
-    preview: 'linear-gradient(135deg, #1c0a0d 0%, #a01f24 58%, #ff2d2d 100%)'
+    label: '警戒态 · EVA-02',
+    desc: '红白机体 · 同级警报',
+    preview: '',
+    previewImage: evaRedScene
   },
   { id: 'custom', label: '自定义', desc: '自己调配背景与侧栏颜色', preview: 'linear-gradient(135deg, #dce8f5, #ffffff)' }
 ]

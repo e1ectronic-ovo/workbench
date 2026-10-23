@@ -1,13 +1,13 @@
 <template>
-  <div class="eva-skin" aria-hidden="true">
+  <div class="eva-skin" :class="{ 'is-red': isRed }" aria-hidden="true">
+    <img class="eva-skin__scene" :src="isRed ? redSceneArt : sceneArt" alt="" decoding="async" />
     <div class="eva-skin__grid"></div>
     <div class="eva-skin__hex"></div>
     <div class="eva-skin__bloom eva-skin__bloom--violet"></div>
     <div class="eva-skin__bloom eva-skin__bloom--lime"></div>
 
     <div class="eva-skin__unit-glow"></div>
-    <img v-if="!isRed" class="eva-skin__unit" :src="unitArt" alt="" decoding="async" />
-    <img v-else class="eva-skin__wall" :src="nervWall" alt="" decoding="async" />
+    <div class="eva-skin__scrim"></div>
 
     <div class="eva-skin__scanlines"></div>
     <div class="eva-skin__axis"></div>
@@ -17,7 +17,7 @@
     <div class="eva-skin__ticks"></div>
 
     <div class="eva-skin__unit-mark">
-      <strong>01</strong>
+      <strong>{{ isRed ? '02' : '01' }}</strong>
       <span>EVA</span>
     </div>
 
@@ -28,8 +28,8 @@
 
     <div class="eva-skin__spec">
       <b>{{ isRed ? 'EMERGENCY' : 'PROTOTYPE' }}</b>
-      <span>{{ isRed ? 'NERV / TOKYO-3 HANGAR' : 'TEST TYPE / UNIT-01' }}</span>
-      <small>{{ isRed ? 'MAGI LINK : ALERT' : 'MAGI LINK : STABLE' }}</small>
+      <span>{{ isRed ? 'EVA-02 / UNIT-02' : 'TEST TYPE / UNIT-01' }}</span>
+      <small>{{ isRed ? 'MAGI LINK : CRITICAL' : 'MAGI LINK : STABLE' }}</small>
     </div>
 
     <div class="eva-skin__reticle"><span></span><span></span><span></span><span></span></div>
@@ -42,12 +42,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { EvaThemeId } from '../stores/settings'
-import unitArt from '../assets/eva/unit-01.webp'
-import nervWall from '../assets/nerv/nerv-console.webp'
+import sceneArt from '../assets/eva/eva-scene.webp'
+import redSceneArt from '../assets/eva/eva-red-scene.webp'
 
 const props = defineProps<{ variant: EvaThemeId }>()
 
-/** 红色警戒态不画机体立绘，改用 NERV 控制台壁纸做环境光 */
+/** 初号机与二号机分别使用各自的完整场景图 */
 const isRed = computed(() => props.variant === 'eva-red')
 </script>
 
@@ -65,6 +65,8 @@ const isRed = computed(() => props.variant === 'eva-red')
     linear-gradient(135deg, var(--eva-bg-0) 0%, var(--eva-bg-1) 54%, #08070d 100%);
 }
 
+.eva-skin__scene,
+.eva-skin__scrim,
 .eva-skin__grid,
 .eva-skin__hex,
 .eva-skin__scanlines,
@@ -134,44 +136,74 @@ const isRed = computed(() => props.variant === 'eva-red')
   box-shadow: 0 0 80px color-mix(in srgb, var(--eva-key) 5%, transparent);
 }
 
-/* 初号机立绘：贴右缘，向左、向下渐隐进暗场 */
-.eva-skin__unit {
-  position: absolute;
-  right: 1%;
-  bottom: 0;
-  height: 90%;
-  width: auto;
-  max-width: 44%;
-  object-fit: contain;
-  object-position: right bottom;
-  opacity: 0.88;
-  mask-image:
-    linear-gradient(to bottom, #000 58%, transparent 96%),
-    linear-gradient(to right, transparent 0%, #000 24%);
-  mask-composite: intersect;
-  -webkit-mask-image:
-    linear-gradient(to bottom, #000 58%, transparent 96%),
-    linear-gradient(to right, transparent 0%, #000 24%);
-  -webkit-mask-composite: source-in;
-}
-
-/* 警戒态：NERV 控制台壁纸只做环境底子，不能被当成壁纸去读 */
-.eva-skin__wall {
-  position: absolute;
+/* 初号机场景铺满窗口，右侧角色保持完整，左侧渐暗承托侧栏与内容 */
+.eva-skin__scene {
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 70% center;
+  object-position: 72% center;
+  opacity: 0.94;
+  filter: saturate(0.94) contrast(1.02) brightness(0.86);
+  transform: scale(1.012);
+}
+
+.eva-skin__scrim {
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(8, 7, 13, 0.82) 0%, rgba(8, 7, 13, 0.56) 18%, rgba(8, 7, 13, 0.2) 46%, transparent 72%),
+    linear-gradient(180deg, rgba(8, 7, 13, 0.22) 0%, transparent 30%, transparent 68%, rgba(8, 7, 13, 0.34) 100%);
+}
+
+.eva-skin:not(.is-red) .eva-skin__grid {
+  opacity: 0.1;
+}
+
+.eva-skin:not(.is-red) .eva-skin__hex,
+.eva-skin:not(.is-red) .eva-skin__slash {
+  display: none;
+}
+
+.eva-skin:not(.is-red) .eva-skin__bloom {
   opacity: 0.32;
-  filter: brightness(0.7) contrast(1.06) saturate(1.05);
-  mask-image: radial-gradient(ellipse at 68% 44%, #000 8%, rgba(0, 0, 0, 0.55) 46%, transparent 84%);
-  -webkit-mask-image: radial-gradient(
-    ellipse at 68% 44%,
-    #000 8%,
-    rgba(0, 0, 0, 0.55) 46%,
-    transparent 84%
-  );
+}
+
+.eva-skin:not(.is-red) .eva-skin__scanlines {
+  opacity: 0.07;
+}
+
+.eva-skin:not(.is-red) .eva-skin__unit-glow {
+  opacity: 0;
+}
+
+.eva-skin:not(.is-red) .eva-skin__hazard {
+  opacity: 0.16;
+}
+
+/* 二号机警戒态：红白分割构图居中，四周压暗以保住卡片和标题栏可读性 */
+.eva-skin.is-red .eva-skin__scene {
+  object-position: 50% center;
+  opacity: 0.92;
+  filter: saturate(0.94) contrast(1.04) brightness(0.76);
+}
+
+.eva-skin.is-red .eva-skin__scrim {
+  background:
+    linear-gradient(90deg, rgba(10, 5, 6, 0.7) 0%, rgba(10, 5, 6, 0.34) 16%, rgba(10, 5, 6, 0.06) 38%, rgba(10, 5, 6, 0.14) 68%, rgba(10, 5, 6, 0.5) 100%),
+    linear-gradient(180deg, rgba(10, 5, 6, 0.34) 0%, transparent 26%, transparent 64%, rgba(10, 5, 6, 0.58) 100%),
+    radial-gradient(circle at 50% 45%, transparent 0%, rgba(10, 5, 6, 0.08) 58%, rgba(10, 5, 6, 0.5) 100%);
+}
+
+.eva-skin.is-red .eva-skin__grid {
+  opacity: 0.1;
+}
+
+.eva-skin.is-red .eva-skin__hex {
+  opacity: 0.1;
+}
+
+.eva-skin.is-red .eva-skin__scanlines {
+  opacity: 0.08;
 }
 
 /* 立绘背后的冷光，让机体边缘从暗场里浮出来 */
@@ -420,9 +452,8 @@ const isRed = computed(() => props.variant === 'eva-red')
 }
 
 @media (max-width: 1180px) {
-  .eva-skin__unit {
-    opacity: 0.5;
-    max-width: 58%;
+  .eva-skin:not(.is-red) .eva-skin__scene {
+    object-position: 66% center;
   }
 }
 
@@ -433,8 +464,14 @@ const isRed = computed(() => props.variant === 'eva-red')
     display: none;
   }
 
-  .eva-skin__unit {
-    opacity: 0.24;
+  .eva-skin:not(.is-red) .eva-skin__scene {
+    object-position: 74% center;
+  }
+
+  .eva-skin:not(.is-red) .eva-skin__scrim {
+    background:
+      linear-gradient(90deg, rgba(8, 7, 13, 0.86), rgba(8, 7, 13, 0.46) 54%, rgba(8, 7, 13, 0.2)),
+      linear-gradient(180deg, rgba(8, 7, 13, 0.24), transparent 42%, rgba(8, 7, 13, 0.36));
   }
 }
 </style>
