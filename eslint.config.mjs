@@ -31,7 +31,11 @@ export default tseslint.config(
       '*.config.ts',
       'scripts/**',
       '.agents/**',
-      '**/*.d.ts'
+      '.workbuddy/**',
+      '**/*.d.ts',
+      // WPF 外壳的构建产物里带着一份 renderer 拷贝，不需要再 lint 一遍
+      'desktop/**/bin/**',
+      'desktop/**/obj/**'
     ]
   },
   js.configs.recommended,
@@ -49,6 +53,13 @@ export default tseslint.config(
       }
     },
     rules: { ...vueRecommendedRules, ...vueStylisticOff }
+  },
+  {
+    // WPF 外壳注入到 WebView2 的桥接脚本：浏览器全局，非模块
+    files: ['desktop/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.browser }
+    }
   },
   {
     files: ['**/*.ts', '**/*.vue'],
