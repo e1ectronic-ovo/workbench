@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
@@ -43,13 +44,40 @@ internal static class ScreenGrab
     [DllImport("gdi32.dll")]
     private static extern bool DeleteDC(IntPtr hdc);
 
-    /// <summary>按窗口在屏幕上的实际位置抓一块像素，存成 PNG。返回文件路径或 null。</summary>
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    /// <summary>
+    /// 按窗口在屏幕上的实际位置抓一块像素，存成 PNG。返回文件路径或 null。
+    ///
+    /// 嵌入的模拟器是独立 HWND（airspace），PrintWindow 抓不到子窗口内容，
+    /// 只能从屏幕 DC 取像素。代价是会被其它窗口遮挡，所以抓之前先把它顶到最前。
+    /// </summary>
     public static string? CaptureWindow(Window window, string filePath)
     {
         var source = PresentationSource.FromVisual(window);
         if (source?.CompositionTarget is null)
         {
             return null;
+        }
+
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+            SetForegroundWindow(hwnd);
+            // 给窗口管理器和模拟器自己的渲染线程一点时间把画面刷上来
+            Thread.Sleep(700);
         }
 
         var scale = source.CompositionTarget.TransformToDevice;

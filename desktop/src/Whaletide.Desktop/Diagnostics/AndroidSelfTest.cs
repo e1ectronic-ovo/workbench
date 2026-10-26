@@ -181,6 +181,14 @@ public static class AndroidSelfTest
             GetClientRect(host.HostHwnd, out var client);
             write($"PASS embedded emulator window; host client={client.Width}x{client.Height}");
 
+            // 和正式挂载走同一条路径：把模拟器的浮动侧边按钮条收起来
+            var embeddedInfo = WindowLocator.FromHandle(target);
+            if (embeddedInfo is not null)
+            {
+                var hidden = WindowLocator.HideToolWindows(embeddedInfo.ProcessName, target);
+                write($"tool windows hidden: {hidden}");
+            }
+
             // 抓一张真实屏幕像素：这一步才是「嵌进去会不会黑屏」的证据。
             // 必须把宿主窗口置顶，否则抓到的可能是盖在上面的其它窗口（比如资源管理器）。
             hostWindow.Topmost = true;
