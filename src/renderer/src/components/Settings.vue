@@ -94,6 +94,7 @@
               <div class="mac-row__text">
                 <div class="mac-row__title">Android 引擎</div>
                 <div class="mac-row__sub" :title="engine?.root || ''">{{ engineSummary }}</div>
+                <div v-if="hardwareSummary" class="mac-row__sub android-hardware">{{ hardwareSummary }}</div>
               </div>
             </div>
             <div class="mac-row__actions">
@@ -1042,6 +1043,19 @@ const engineSummary = computed(() => {
   return `已就绪 · ${e.image}`
 })
 
+/** 按宿主硬件分配的资源；AEHD 与 WHPX 的差异直接决定画面顺不顺。 */
+const hardwareSummary = computed(() => {
+  const h = engine.value?.hardware
+  if (!h) return ''
+  const ram = `${(h.ramMegabytes / 1024).toFixed(h.ramMegabytes % 1024 === 0 ? 0 : 1)}GB`
+  const accel = h.accelerator === 'aehd'
+    ? 'AEHD 硬件加速'
+    : h.accelerator === 'whpx'
+      ? 'WHPX（AMD/Intel 兼容层，比 AEHD 慢）'
+      : '未检测到加速'
+  return `${h.cpuCores} 核 · ${ram} · GPU ${h.gpuMode} · ${accel}`
+})
+
 async function refreshEngine() {
   if (!androidApi) return
   try {
@@ -1783,6 +1797,13 @@ async function confirmRemove() {
 }
 
 /* 安卓面板 */
+
+.android-hardware {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.85;
+}
 
 .android-progress {
   margin: var(--space-2) 0 var(--space-3);

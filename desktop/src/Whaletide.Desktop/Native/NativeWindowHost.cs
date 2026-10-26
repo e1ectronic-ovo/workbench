@@ -23,12 +23,27 @@ public sealed class NativeWindowHost : HwndHost
     public IntPtr ChildHwnd => _childHwnd;
     public bool IsEmbedded => _childHwnd != IntPtr.Zero;
 
+    /// <summary>上一次 Attach 失败时的 Win32 错误码与说明，用于诊断为什么嵌不进去。</summary>
+    public int LastError { get; private set; }
+    public string LastErrorText { get; private set; } = string.Empty;
+
     /// <summary>
     /// 是否保持子窗口原始宽高比。
     /// 安卓模拟器是 1080×1920 竖屏，直接拉满横屏容器会变形并裁掉内容，
     /// 所以默认等比缩放 + 上下留边。
     /// </summary>
     public bool PreserveAspect { get; set; } = true;
+
+    /// <summary>把 SetParent 的失败码翻译成人话，避免只报一句「被拒绝」。</summary>
+    private static string DescribeReparentFailure(int error) => error switch
+    {
+        0 => "SetParent 返回空但未设置错误码（窗口可能已被其它进程接管）",
+        5 => "ERROR_ACCESS_DENIED：目标进程权限高于本进程，通常需要以相同或更高权限运行",
+        87 => "ERROR_INVALID_PARAMETER：窗口句柄或样式非法",
+        1400 => "ERROR_INVALID_WINDOW_HANDLE：窗口句柄已失效",
+        5023 => "ERROR_INVALID_STATE：两个进程的 DPI 感知模式不一致，跨进程 SetParent 被拒绝",
+        _ => $"SetParent 失败，Win32 错误码 {error}"
+    };
 
     public void SetVisible(bool visible)
     {
@@ -81,6 +96,8 @@ public sealed class NativeWindowHost : HwndHost
     {
         if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
         {
+            LastError = Marshal.GetLastPInvokeError();
+            LastErrorText = $"窗口句柄已失效（IsWindow=false） handle=0x{hwnd.ToInt64():X}";
             return false;
         }
 
@@ -115,9 +132,23 @@ public sealed class NativeWindowHost : HwndHost
         exStyle |= WS_EX_TOOLWINDOW;
         SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
 
+        Marshal.SetLastPInvokeError(0);
         var previousParent = SetParent(hwnd, _hostHwnd);
+        var setParentError = Marshal.GetLastPInvokeError();
         if (previousParent == IntPtr.Zero && GetParent(hwnd) != _hostHwnd)
         {
+            LastError = setParentError;
+            var actualParent = GetParent(hwnd);
+            var styleNow = GetWindowLongPtr(hwnd, GWL_STYLE);
+            LastErrorText = string.Join(" | ", new[]
+            {
+                DescribeReparentFailure(setParentError),
+                $"parentAfter=0x{actualParent.ToInt64():X}",
+                $"expect=0x{_hostHwnd.ToInt64():X}",
+                $"styleAfter=0x{styleNow:X}",
+                $"isChild={((styleNow & WS_CHILD) != 0)}",
+                $"isWindow={IsWindow(hwnd)}"
+            });
             // Restore the target if Windows rejected the reparenting operation.
             SetWindowLongPtr(hwnd, GWL_STYLE, _originalStyle);
             SetWindowLongPtr(hwnd, GWL_EXSTYLE, _originalExStyle);

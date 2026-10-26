@@ -483,8 +483,11 @@ public partial class MainWindow : Window
         if (!WindowHost.Embed(target.Handle))
         {
             throw new InvalidOperationException(
-                $"Windows 拒绝把窗口 0x{target.Handle.ToInt64():X} 设为子窗口。请确认模拟器与鲸汐以相同权限级别运行。");
+                $"Windows 拒绝把窗口 0x{target.Handle.ToInt64():X} 设为子窗口：{WindowHost.LastErrorText}");
         }
+
+        // 模拟器还有一个浮动侧边按钮条，主窗口嵌进来后它会留在桌面上挡住界面
+        WindowLocator.HideToolWindows(target.ProcessName, target.Handle);
 
         _embeddedWindow = target;
         DetachButton.IsEnabled = true;
@@ -535,7 +538,13 @@ public partial class MainWindow : Window
 
     private void DetachEmbeddedWindow()
     {
+        var processName = _embeddedWindow?.ProcessName;
         WindowHost.Detach();
+        if (!string.IsNullOrWhiteSpace(processName))
+        {
+            // 解绑后模拟器回到独立窗口形态，把之前收起来的工具栏还回去
+            WindowLocator.ShowToolWindows(processName);
+        }
         NativeOverlay.Visibility = Visibility.Collapsed;
         _embeddedWindow = null;
         DetachButton.IsEnabled = false;

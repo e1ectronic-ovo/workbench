@@ -11,8 +11,15 @@ public sealed record WindowInfo(
     string Title,
     string ClassName)
 {
+    public int Width { get; init; }
+    public int Height { get; init; }
+    /// <summary>WS_EX_TOOLWINDOW：浮动工具栏/提示条一类，不是主显示窗口。</summary>
+    public bool IsToolWindow { get; init; }
+
+    public int Area => Width * Height;
+
     public string Display =>
-        $"{ProcessName}  ·  {(string.IsNullOrWhiteSpace(Title) ? "(无标题)" : Title)}  ·  {ClassName}  ·  0x{Handle.ToInt64():X}";
+        $"{ProcessName}  ·  {(string.IsNullOrWhiteSpace(Title) ? "(无标题)" : Title)}  ·  {ClassName}  ·  {Width}×{Height}  ·  0x{Handle.ToInt64():X}";
 }
 
 public static class WindowLocator
@@ -53,7 +60,14 @@ public static class WindowLocator
                 return true;
             }
 
-            result.Add(new WindowInfo(hwnd, (int)pid, processName, title, className));
+            GetWindowRect(hwnd, out var rect);
+            var exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+            result.Add(new WindowInfo(hwnd, (int)pid, processName, title, className)
+            {
+                Width = Math.Max(0, rect.Right - rect.Left),
+                Height = Math.Max(0, rect.Bottom - rect.Top),
+                IsToolWindow = (exStyle & WS_EX_TOOLWINDOW) != 0
+            });
             return true;
         }, IntPtr.Zero);
 
@@ -89,7 +103,8 @@ public static class WindowLocator
                 .Select(w => new { Window = w, Score = Score(w, title, className) })
                 .Where(x => x.Score >= 0)
                 .OrderByDescending(x => x.Score)
-                .ThenBy(x => x.Window.Title.Length)
+                // 分数相同时选面积最大的：主显示窗口一定比辅助窗口大
+                .ThenByDescending(x => x.Window.Area)
                 .Select(x => x.Window)
                 .FirstOrDefault();
 
@@ -146,16 +161,100 @@ public static class WindowLocator
              window.Title.Contains(title, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>太小的窗口不可能是主显示区域，用来过滤掉按钮条、提示气泡。</summary>
+    private const int MinWindowSize = 160;
+
+    /// <summary>
+    /// 隐藏同进程的浮动工具栏。
+    ///
+    /// 模拟器（qemu）除了主显示窗口，还会有一个 WS_EX_TOOLWINDOW 的侧边按钮条。
+    /// 主窗口被 SetParent 进宿主后，这个按钮条仍然作为独立窗口浮在桌面上，
+    /// 视觉上就像贴在客户端界面上的一块异物。客户端自己有控制入口，直接收起来。
+    /// </summary>
+    /// <returns>被隐藏的窗口数量。</returns>
+    public static int HideToolWindows(string processName, IntPtr keep)
+    {
+        var hidden = 0;
+        foreach (var window in EnumerateTopLevelWindows())
+        {
+            if (window.Handle == keep)
+            {
+                continue;
+            }
+            if (!window.IsToolWindow)
+            {
+                continue;
+            }
+            if (!string.Equals(
+                    NormalizeProcessName(window.ProcessName),
+                    NormalizeProcessName(processName),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (IsWindowVisible(window.Handle))
+            {
+                ShowWindow(window.Handle, SW_HIDE);
+                hidden++;
+            }
+        }
+        return hidden;
+    }
+
+    /// <summary>把之前被 <see cref="HideToolWindows"/> 收起来的工具栏放回去。</summary>
+    public static int ShowToolWindows(string processName)
+    {
+        var shown = 0;
+        foreach (var window in EnumerateTopLevelWindows(visibleOnly: false))
+        {
+            if (!window.IsToolWindow)
+            {
+                continue;
+            }
+            if (!string.Equals(
+                    NormalizeProcessName(window.ProcessName),
+                    NormalizeProcessName(processName),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (!IsWindowVisible(window.Handle))
+            {
+                ShowWindow(window.Handle, SW_SHOW);
+                shown++;
+            }
+        }
+        return shown;
+    }
+
     private static int Score(WindowInfo window, string? title, string? className)
     {
         var score = 1;
         if (!string.IsNullOrWhiteSpace(className))
         {
+            // 用户显式指定了类名，就完全按他的意思来，不再做启发式排除
             if (!string.Equals(window.ClassName, className, StringComparison.OrdinalIgnoreCase))
             {
                 return -1;
             }
             score += 4;
+        }
+        else
+        {
+            // 没指定类名时的启发式排除。
+            //
+            // 模拟器（qemu）进程会有上百个窗口，其中可见的通常只有两个：
+            // 一个 54×508 的 WS_EX_TOOLWINDOW 侧边按钮条（标题 "Emulator"），
+            // 和一个真正的主显示窗口。如果只按标题长度排序，短标题的按钮条会胜出，
+            // 而那个按钮条存在时间很短，SetParent 拿到的句柄往往已经失效。
+            if (window.IsToolWindow)
+            {
+                return -1;
+            }
+            if (window.Width < MinWindowSize || window.Height < MinWindowSize)
+            {
+                return -1;
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(title))

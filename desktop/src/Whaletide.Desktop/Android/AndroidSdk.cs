@@ -209,12 +209,26 @@ public sealed class AndroidSdk
         throw new InvalidOperationException($"{packagePath} 没有可用归档");
     }
 
-    /// <summary>写出私有 AVD：竖屏 1080×1920，短剧类应用按竖屏出片。</summary>
+    /// <summary>写出私有 AVD：竖屏 1080×1920，短剧类应用按竖屏出片。硬件参数按宿主能力分配。</summary>
     public void WriteAvd()
     {
         var avdHome = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".android", "avd");
         Directory.CreateDirectory(AvdDir);
+
+        var profile = HardwareProfile.Detect();
+        var hardware = new[]
+        {
+            $"hw.cpu.arch={Abi}",
+            "hw.lcd.width=1080",
+            "hw.lcd.height=1920",
+            "hw.lcd.density=420",
+            "hw.keyboard=yes",
+            "fastboot.forceColdBoot=no",
+            "showDeviceFrame=no",
+            "PlayStore.enabled=false",
+            "skin.dynamic=yes"
+        }.Concat(profile.PerformanceKeys().Select(pair => $"{pair.Key}={pair.Value}"));
 
         var config = string.Join('\n', new[]
         {
@@ -224,23 +238,8 @@ public sealed class AndroidSdk
             $"image.sysdir.1=system-images/{ApiLevel}/{Tag}/{Abi}/",
             $"tag.id={Tag}",
             $"tag.display={Tag}",
-            $"abi.type={Abi}",
-            $"hw.cpu.arch={Abi}",
-            "hw.cpu.ncore=4",
-            "hw.lcd.width=1080",
-            "hw.lcd.height=1920",
-            "hw.lcd.density=420",
-            "hw.ramSize=3072",
-            "vm.heapSize=512",
-            "hw.keyboard=yes",
-            "hw.gpu.enabled=yes",
-            "hw.gpu.mode=auto",
-            "disk.dataPartition.size=4096M",
-            "fastboot.forceColdBoot=no",
-            "showDeviceFrame=no",
-            "PlayStore.enabled=false",
-            "skin.dynamic=yes"
-        });
+            $"abi.type={Abi}"
+        }.Concat(hardware));
         File.WriteAllText(Path.Combine(AvdDir, "config.ini"), config + "\n");
 
         var ini = string.Join('\n', new[]
@@ -252,5 +251,65 @@ public sealed class AndroidSdk
         });
         Directory.CreateDirectory(avdHome);
         File.WriteAllText(Path.Combine(avdHome, $"{AvdName}.ini"), ini + "\n");
+    }
+
+    /// <summary>
+    /// 把已存在 AVD 的性能相关键校正到当前硬件画像。
+    ///
+    /// 老用户的 config.ini 是旧版本写出来的（4 核 / 3GB / gpu=auto），不会因为升级客户端
+    /// 就重新生成。这里做一次幂等校正：只动性能键，不碰用户其它设置（分辨率、数据分区等）。
+    /// </summary>
+    /// <returns>是否发生了实际修改。</returns>
+    public bool SyncAvdPerformance()
+    {
+        var path = Path.Combine(AvdDir, "config.ini");
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        var profile = HardwareProfile.Detect();
+        var wanted = profile.PerformanceKeys();
+
+        var lines = File.ReadAllLines(path).ToList();
+        var applied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var changed = false;
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var raw = lines[i];
+            var separator = raw.IndexOf('=');
+            if (separator <= 0)
+            {
+                continue;
+            }
+
+            var key = raw[..separator].Trim();
+            if (!wanted.TryGetValue(key, out var value))
+            {
+                continue;
+            }
+
+            applied.Add(key);
+            var normalized = $"{key} = {value}";
+            if (!string.Equals(raw.Trim(), normalized, StringComparison.Ordinal))
+            {
+                lines[i] = normalized;
+                changed = true;
+            }
+        }
+
+        // 老配置里可能缺少某些键（比如 hw.gpu.enabled），补上
+        foreach (var pair in wanted.Where(pair => !applied.Contains(pair.Key)))
+        {
+            lines.Add($"{pair.Key} = {pair.Value}");
+            changed = true;
+        }
+
+        if (changed)
+        {
+            File.WriteAllLines(path, lines);
+        }
+        return changed;
     }
 }

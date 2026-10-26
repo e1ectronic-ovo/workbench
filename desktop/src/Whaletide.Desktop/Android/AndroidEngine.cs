@@ -25,6 +25,8 @@ public sealed class AndroidEngine : IDisposable
     private Process? _emulator;
     private AndroidEngineState _state = AndroidEngineState.Stopped;
     private string _lastError = string.Empty;
+    /// <summary>emulator 最近的输出，用于失败时解释原因（也是防止管道阻塞的消费端）。</summary>
+    private readonly Queue<string> _emulatorLog = new();
 
     /// <summary>内置引擎的窗口属于 qemu 进程，不是 emulator.exe（后者只是启动器）。</summary>
     public const string WindowProcessName = "qemu-system-x86_64";
@@ -44,6 +46,7 @@ public sealed class AndroidEngine : IDisposable
             _state = AndroidEngineState.NotInstalled;
         }
 
+        var profile = HardwareProfile.Detect();
         return new
         {
             installed,
@@ -53,7 +56,14 @@ public sealed class AndroidEngine : IDisposable
             root = _sdk.Root,
             image = $"{_sdk.AvdName}",
             lastError = _lastError,
-            windowProcess = WindowProcessName
+            windowProcess = WindowProcessName,
+            hardware = new
+            {
+                cpuCores = profile.CpuCores,
+                ramMegabytes = profile.RamMegabytes,
+                gpuMode = profile.GpuMode,
+                accelerator = HardwareProfile.DetectAccelerator()
+            }
         };
     }
 
@@ -106,6 +116,8 @@ public sealed class AndroidEngine : IDisposable
             if (devices.Contains(_sdk.Serial, StringComparer.OrdinalIgnoreCase) && await adb.IsBootedAsync(token))
             {
                 progress.Report("复用已在运行的引擎");
+                // 复用的实例可能是上一版客户端启动的，性能设置一样要补齐
+                await ApplyPerformanceTweaksAsync(adb, progress, token);
                 _state = AndroidEngineState.Running;
                 return GetStatus();
             }
@@ -117,36 +129,48 @@ public sealed class AndroidEngine : IDisposable
                 await WaitExitAsync(_emulator, TimeSpan.FromSeconds(10));
             }
 
-            progress.Report("启动 Android 引擎（首次开机需要 1–3 分钟）…");
-            var startInfo = new ProcessStartInfo
+            // 老 AVD 的 config.ini 是旧版本写的（4 核 / 3GB / gpu=auto），
+            // 客户端升级后要能自动吃到按当前宿主算出来的硬件分配。
+            if (_sdk.SyncAvdPerformance())
             {
-                FileName = _sdk.EmulatorPath,
-                WorkingDirectory = Path.GetDirectoryName(_sdk.EmulatorPath)!,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            foreach (var arg in new[]
-                     {
-                         "-avd", _sdk.AvdName,
-                         "-no-boot-anim",
-                         "-no-snapshot-save",
-                         "-netdelay", "none",
-                         "-netspeed", "full",
-                         "-gpu", "auto"
-                     })
-            {
-                startInfo.ArgumentList.Add(arg);
+                progress.Report("已按当前硬件更新 AVD 配置");
             }
-            startInfo.Environment["ANDROID_SDK_ROOT"] = _sdk.Root;
-            startInfo.Environment["ANDROID_HOME"] = _sdk.Root;
+            var profile = HardwareProfile.Detect();
 
-            _emulator = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("模拟器进程没有启动");
+            // host 直通独显是最快的路径，但在少数 Optimus / 虚拟显示器环境里会直接崩。
+            // 崩了就退回 auto，宁可慢一点也不要整个引擎不可用。
+            var gpuModes = profile.GpuMode == "host"
+                ? new[] { "host", "auto" }
+                : new[] { profile.GpuMode };
 
-            await WaitForDeviceAsync(adb, progress, token);
-            await WaitForBootAsync(adb, progress, token);
+            Exception? lastError = null;
+            foreach (var gpuMode in gpuModes)
+            {
+                progress.Report(
+                    $"启动 Android 引擎（{profile.CpuCores} 核 / {profile.RamMegabytes}MB / GPU {gpuMode}）…");
+                LaunchEmulator(gpuMode);
+
+                try
+                {
+                    await WaitForDeviceAsync(adb, progress, token);
+                    await WaitForBootAsync(adb, progress, token);
+                    lastError = null;
+                    break;
+                }
+                catch (Exception ex) when (gpuMode == "host" && !token.IsCancellationRequested)
+                {
+                    lastError = ex;
+                    progress.Report($"GPU host 模式没起来（{ex.Message}），改用 auto 重试…");
+                    await KillEmulatorAsync(token);
+                }
+            }
+
+            if (lastError is not null)
+            {
+                throw lastError;
+            }
+
+            await ApplyPerformanceTweaksAsync(adb, progress, token);
 
             _state = AndroidEngineState.Running;
             progress.Report("引擎已就绪");
@@ -162,6 +186,41 @@ public sealed class AndroidEngine : IDisposable
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// 开机后应用一组性能设置。
+    ///
+    /// 这不是「调参数让它看起来快」，而是去掉模拟器场景下纯属浪费的开销：
+    /// 系统过渡动画在虚拟化环境里每帧都要走一遍 VM exit，而它本身没有任何信息量。
+    /// 关掉后代画面跳变更干脆，感知上明显更跟手。
+    /// </summary>
+    private static async Task ApplyPerformanceTweaksAsync(
+        AdbClient adb,
+        IProgress<string> progress,
+        CancellationToken token)
+    {
+        var tweaks = new[]
+        {
+            new[] { "shell", "settings", "put", "global", "window_animation_scale", "0" },
+            new[] { "shell", "settings", "put", "global", "transition_animation_scale", "0" },
+            // 安装时跳过 adb 校验，装大 APK 能省十几秒
+            new[] { "shell", "settings", "put", "global", "verifier_verify_adb_installs", "0" }
+        };
+
+        foreach (var tweak in tweaks)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                await adb.RunAsync(tweak, TimeSpan.FromSeconds(8), token);
+            }
+            catch
+            {
+                // 单项失败不该让整个启动流程失败
+            }
+        }
+        progress.Report("已关闭系统过渡动画");
     }
 
     public async Task<object> StopAsync(CancellationToken token = default)
@@ -202,6 +261,104 @@ public sealed class AndroidEngine : IDisposable
         return adb is not null && await adb.IsBootedAsync(token);
     }
 
+    /// <summary>拉起 emulator 进程。<c>-gpu</c> 显式传，避免 AVD 里的旧值覆盖。</summary>
+    private void LaunchEmulator(string gpuMode)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = _sdk.EmulatorPath,
+            WorkingDirectory = Path.GetDirectoryName(_sdk.EmulatorPath)!,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        foreach (var arg in new[]
+                 {
+                     "-avd", _sdk.AvdName,
+                     "-no-boot-anim",
+                     "-no-snapshot-save",
+                     "-netdelay", "none",
+                     "-netspeed", "full",
+                     "-gpu", gpuMode
+                 })
+        {
+            startInfo.ArgumentList.Add(arg);
+        }
+        startInfo.Environment["ANDROID_SDK_ROOT"] = _sdk.Root;
+        startInfo.Environment["ANDROID_HOME"] = _sdk.Root;
+
+        var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("模拟器进程没有启动");
+
+        // 必须把管道读空。重定向了却没人读，子进程写满 4KB 缓冲后会永久阻塞在 write()，
+        // 表现就是「进程活着但永远不上线」——这个坑排查起来非常费时间。
+        _emulatorLog.Clear();
+        void Capture(object? _, DataReceivedEventArgs e)
+        {
+            if (e.Data is null)
+            {
+                return;
+            }
+            lock (_emulatorLog)
+            {
+                _emulatorLog.Enqueue(e.Data);
+                while (_emulatorLog.Count > 40)
+                {
+                    _emulatorLog.Dequeue();
+                }
+            }
+        }
+
+        process.OutputDataReceived += Capture;
+        process.ErrorDataReceived += Capture;
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        _emulator = process;
+    }
+
+    /// <summary>把 emulator 最近输出拼成一段，用于失败时的错误信息。</summary>
+    private string EmulatorLogTail(int lines = 12)
+    {
+        lock (_emulatorLog)
+        {
+            return string.Join(Environment.NewLine, _emulatorLog.TakeLast(lines));
+        }
+    }
+
+    /// <summary>内部重试用：不等 adb，直接收掉当前实例。</summary>
+    private async Task KillEmulatorAsync(CancellationToken token)
+    {
+        if (_emulator is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var adb = CreateAdb();
+            if (adb is not null)
+            {
+                await adb.RunAsync(new[] { "-s", _sdk.Serial, "emu", "kill" }, TimeSpan.FromSeconds(8), token);
+            }
+            await WaitExitAsync(_emulator, TimeSpan.FromSeconds(10));
+            if (!_emulator.HasExited)
+            {
+                _emulator.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // 收不掉也不该把原始错误盖掉
+        }
+        finally
+        {
+            _emulator?.Dispose();
+            _emulator = null;
+        }
+    }
+
     private async Task WaitForDeviceAsync(AdbClient adb, IProgress<string> progress, CancellationToken token)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(90);
@@ -211,7 +368,7 @@ public sealed class AndroidEngine : IDisposable
             if (_emulator is { HasExited: true })
             {
                 throw new InvalidOperationException(
-                    $"模拟器进程提前退出（代码 {_emulator.ExitCode}）。常见原因是 WHPX/Hyper-V 未就绪或镜像损坏。");
+                    $"模拟器进程提前退出（代码 {_emulator.ExitCode}）。{EmulatorLogTail()}");
             }
 
             var devices = await adb.DevicesAsync(token);
@@ -224,7 +381,7 @@ public sealed class AndroidEngine : IDisposable
             await Task.Delay(1000, token);
         }
 
-        throw new TimeoutException("90 秒内没有等到模拟器上线");
+        throw new TimeoutException($"90 秒内没有等到模拟器上线。{EmulatorLogTail()}");
     }
 
     private async Task WaitForBootAsync(AdbClient adb, IProgress<string> progress, CancellationToken token)

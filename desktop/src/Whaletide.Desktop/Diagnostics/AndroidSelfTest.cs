@@ -140,6 +140,12 @@ public static class AndroidSelfTest
         NativeWindowHost? host = null;
         try
         {
+            write($"target handle=0x{target.ToInt64():X} isWindow={IsWindow(target)}");
+            foreach (var candidate in WindowLocator.EnumerateTopLevelWindows()
+                         .Where(w => w.ProcessName.Contains("qemu", StringComparison.OrdinalIgnoreCase)))
+            {
+                write($"  candidate: {candidate.Display} isWindow={IsWindow(candidate.Handle)}");
+            }
             host = new NativeWindowHost { Width = 900, Height = 600 };
             var root = new System.Windows.Controls.Grid();
             root.Children.Add(host);
@@ -160,7 +166,7 @@ public static class AndroidSelfTest
 
             if (!host.Embed(target))
             {
-                write("FAIL: SetParent 被拒绝（模拟器窗口无法作为子窗口）");
+                write($"FAIL: SetParent 被拒绝（模拟器窗口无法作为子窗口） code={host.LastError} {host.LastErrorText}");
                 return;
             }
             Drain(hostWindow.Dispatcher);
@@ -175,13 +181,17 @@ public static class AndroidSelfTest
             GetClientRect(host.HostHwnd, out var client);
             write($"PASS embedded emulator window; host client={client.Width}x{client.Height}");
 
-            // 抓一张真实屏幕像素：这一步才是「嵌进去会不会黑屏」的证据
+            // 抓一张真实屏幕像素：这一步才是「嵌进去会不会黑屏」的证据。
+            // 必须把宿主窗口置顶，否则抓到的可能是盖在上面的其它窗口（比如资源管理器）。
+            hostWindow.Topmost = true;
+            hostWindow.Activate();
             Drain(hostWindow.Dispatcher);
-            Thread.Sleep(1200);
+            Thread.Sleep(2000);
             Drain(hostWindow.Dispatcher);
             var shot = ScreenGrab.CaptureWindow(
                 hostWindow, Path.Combine(AppContext.BaseDirectory, "embedding-check.png"));
             write(shot is null ? "WARN: 抓屏失败" : $"shot saved: {shot}");
+            hostWindow.Topmost = false;
 
             host.Detach();
             Drain(hostWindow.Dispatcher);

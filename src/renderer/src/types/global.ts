@@ -62,6 +62,14 @@ export interface AndroidEngineStatus {
   lastError: string
   /** 引擎窗口所属进程（qemu-system-x86_64），模块绑定时用它 */
   windowProcess: string
+  /** 按宿主硬件算出来的资源分配，用于在设置页说明「为什么这么配」 */
+  hardware?: {
+    cpuCores: number
+    ramMegabytes: number
+    gpuMode: string
+    /** 实际生效的 CPU 虚拟化后端：aehd 优于 whpx */
+    accelerator: string
+  }
 }
 
 export interface AndroidAppsResult {
