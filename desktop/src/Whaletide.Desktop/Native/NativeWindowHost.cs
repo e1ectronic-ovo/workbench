@@ -23,6 +23,13 @@ public sealed class NativeWindowHost : HwndHost
     public IntPtr ChildHwnd => _childHwnd;
     public bool IsEmbedded => _childHwnd != IntPtr.Zero;
 
+    /// <summary>
+    /// 是否保持子窗口原始宽高比。
+    /// 安卓模拟器是 1080×1920 竖屏，直接拉满横屏容器会变形并裁掉内容，
+    /// 所以默认等比缩放 + 上下留边。
+    /// </summary>
+    public bool PreserveAspect { get; set; } = true;
+
     public void SetVisible(bool visible)
     {
         if (_childHwnd != IntPtr.Zero && IsWindow(_childHwnd))
@@ -176,13 +183,29 @@ public sealed class NativeWindowHost : HwndHost
             return;
         }
 
+        var x = 0;
+        var y = 0;
+        var width = Math.Max(1, rect.Width);
+        var height = Math.Max(1, rect.Height);
+
+        if (PreserveAspect && _originalRect.Width > 0 && _originalRect.Height > 0)
+        {
+            var scale = Math.Min(
+                (double)rect.Width / _originalRect.Width,
+                (double)rect.Height / _originalRect.Height);
+            width = Math.Max(1, (int)Math.Round(_originalRect.Width * scale));
+            height = Math.Max(1, (int)Math.Round(_originalRect.Height * scale));
+            x = Math.Max(0, (rect.Width - width) / 2);
+            y = Math.Max(0, (rect.Height - height) / 2);
+        }
+
         SetWindowPos(
             _childHwnd,
             IntPtr.Zero,
-            0,
-            0,
-            Math.Max(1, rect.Width),
-            Math.Max(1, rect.Height),
+            x,
+            y,
+            width,
+            height,
             SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
 

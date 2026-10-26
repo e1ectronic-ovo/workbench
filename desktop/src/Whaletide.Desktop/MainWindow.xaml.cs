@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Win32;
+using Whaletide.Desktop.Android;
 using Whaletide.Desktop.Native;
 
 namespace Whaletide.Desktop;
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
     private const string StartupRegistryName = "WhaletideWpf";
 
     private readonly string _userDataRoot;
+    private readonly AndroidEngine _androidEngine = new();
     private WindowInfo? _embeddedWindow;
     private bool _webViewReady;
     private bool _detachForClose;
@@ -112,6 +114,13 @@ public partial class MainWindow : Window
             {
                 "android.mount" => await MountAndroidWindowAsync(args),
                 "android.launch" => await LaunchAndroidWindowAsync(args),
+                "android.prepare" => await RunWithProgressAsync(p => _androidEngine.PrepareAsync(p)),
+                "android.engineStart" => await RunWithProgressAsync(p => _androidEngine.StartAsync(p)),
+                "android.engineStop" => await _androidEngine.StopAsync(),
+                "android.appsInstall" => await InstallApkAsync(args),
+                "android.appsList" => await ListAndroidAppsAsync(),
+                "android.appsLaunch" => await LaunchAndroidAppAsync(args),
+                "android.appsUninstall" => await UninstallAndroidAppAsync(args),
                 _ => HandleRequest(method, args)
             };
             Reply(requestId, result);
@@ -184,6 +193,10 @@ public partial class MainWindow : Window
                 return GetAndroidStatus();
             case "android.status":
                 return GetAndroidStatus();
+            case "android.engineStatus":
+                return _androidEngine.GetStatus();
+            case "dialog.pickApk":
+                return PickApk();
             default:
                 throw new InvalidOperationException($"Unsupported bridge method: {method}");
         }
@@ -290,8 +303,132 @@ public partial class MainWindow : Window
         return GetAndroidStatus();
     }
 
-    private static Rect ReadRect(JsonElement args)
+    // ── 内置 Android 引擎（运行时由客户端自己准备和管理）────────────────
+
+    private async Task<object> RunWithProgressAsync(Func<IProgress<string>, Task<object>> work)
     {
+        IProgress<string> progress = new Progress<string>(message =>
+            SendEvent("android:progress", new { message }));
+        return await work(progress);
+    }
+
+    private AdbClient RequireAdb()
+    {
+        return _androidEngine.CreateAdb()
+            ?? throw new InvalidOperationException(
+                "Android 运行时还没准备好。请先在「设置 → 安卓」里点「准备运行时」。");
+    }
+
+    /// <summary>装 APK / 启应用之前先确保引擎起来了；引擎已就绪时这一步是空跑。</summary>
+    private async Task<AdbClient> EnsureEngineAsync(IProgress<string> progress)
+    {
+        await _androidEngine.StartAsync(progress);
+        return RequireAdb();
+    }
+
+    private async Task<object> InstallApkAsync(JsonElement args)
+    {
+        var path = GetString(args, "path");
+        if (path.Length == 0 || !File.Exists(path))
+        {
+            throw new FileNotFoundException("找不到 APK 文件", path);
+        }
+        if (!path.EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("只支持 .apk 文件");
+        }
+
+        IProgress<string> progress = new Progress<string>(message =>
+            SendEvent("android:progress", new { message }));
+        var adb = await EnsureEngineAsync(progress);
+
+        progress.Report($"安装 {Path.GetFileName(path)}…");
+        var install = await adb.InstallAsync(path);
+        var output = $"{install.StdOut}\n{install.StdErr}".Trim();
+        if (!install.Ok || !output.Contains("Success", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"安装失败：{output}");
+        }
+
+        var packages = await adb.ListThirdPartyPackagesAsync();
+        progress.Report("安装完成");
+        return new
+        {
+            ok = true,
+            output,
+            packages,
+            windowProcess = AndroidEngine.WindowProcessName
+        };
+    }
+
+    private async Task<object> ListAndroidAppsAsync()
+    {
+        var adb = RequireAdb();
+        var packages = await adb.ListThirdPartyPackagesAsync();
+        return new
+        {
+            packages,
+            windowProcess = AndroidEngine.WindowProcessName
+        };
+    }
+
+    private async Task<object> LaunchAndroidAppAsync(JsonElement args)
+    {
+        var packageName = GetString(args, "packageName").Trim();
+        if (packageName.Length == 0)
+        {
+            throw new InvalidOperationException("缺少包名");
+        }
+
+        IProgress<string> progress = new Progress<string>(message =>
+            SendEvent("android:progress", new { message }));
+        var adb = await EnsureEngineAsync(progress);
+
+        var result = await adb.LaunchAsync(packageName);
+        if (!result.Ok && result.StdOut.Length == 0)
+        {
+            throw new InvalidOperationException($"启动失败：{result.Message}");
+        }
+
+        return new
+        {
+            ok = true,
+            packageName,
+            output = result.StdOut.Trim(),
+            windowProcess = AndroidEngine.WindowProcessName
+        };
+    }
+
+    private async Task<object> UninstallAndroidAppAsync(JsonElement args)
+    {
+        var packageName = GetString(args, "packageName").Trim();
+        if (packageName.Length == 0)
+        {
+            throw new InvalidOperationException("缺少包名");
+        }
+
+        var adb = RequireAdb();
+        var result = await adb.UninstallAsync(packageName);
+        if (!result.Ok)
+        {
+            throw new InvalidOperationException($"卸载失败：{result.Message}");
+        }
+        return new { ok = true, packageName };
+    }
+
+    private string? PickApk()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择要安装的 APK",
+            Filter = "Android 应用包|*.apk|所有文件|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        return dialog.ShowDialog(this) == true ? dialog.FileName : null;
+    }
+
+    private static Rect ReadRect(JsonElement args)    {
         return new Rect(
             GetDouble(args, "x"),
             GetDouble(args, "y"),

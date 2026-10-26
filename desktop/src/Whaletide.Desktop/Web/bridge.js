@@ -31,7 +31,7 @@
     }
   }
 
-  function request(method, args = {}) {
+  function request(method, args = {}, timeoutMs = 15_000) {
     if (!webview) {
       return Promise.reject(new Error(`Whaletide host bridge is unavailable (${method})`))
     }
@@ -41,7 +41,7 @@
       const timer = window.setTimeout(() => {
         pending.delete(id)
         reject(new Error(`Whaletide host request timed out: ${method}`))
-      }, 15_000)
+      }, timeoutMs)
 
       pending.set(id, { resolve, reject, timer })
       webview.postMessage({ type: 'whaletide:request', id, method, args })
@@ -238,7 +238,19 @@
       deactivate: () => request('android.deactivate'),
       detach: () => request('android.detach'),
       status: () => request('android.status'),
-      onStatus: (callback) => listen('android:status', callback)
+      onStatus: (callback) => listen('android:status', callback),
+
+      // 内置 Android 引擎：首次准备要下载约 2GB，超时给足
+      engineStatus: () => request('android.engineStatus'),
+      prepare: () => request('android.prepare', {}, 30 * 60_000),
+      startEngine: () => request('android.engineStart', {}, 10 * 60_000),
+      stopEngine: () => request('android.engineStop', {}, 60_000),
+      pickApk: () => request('dialog.pickApk'),
+      installApk: (path) => request('android.appsInstall', { path }, 10 * 60_000),
+      listApps: () => request('android.appsList'),
+      launchApp: (packageName) => request('android.appsLaunch', { packageName }, 10 * 60_000),
+      uninstallApp: (packageName) => request('android.appsUninstall', { packageName }),
+      onProgress: (callback) => listen('android:progress', callback)
     }
   }
 
