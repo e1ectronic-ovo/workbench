@@ -1,8 +1,15 @@
 export type ModuleKind = 'web' | 'native'
 
 export interface NativeAppConfig {
-  /** 目标窗口所属进程名，例如 MuMuPlayer.exe 对应的 MuMuPlayer。 */
-  processName: string
+  /**
+   * window：绑定一个已经在跑的进程窗口（模拟器、播放器都行）
+   * android：用客户端内置的 Android 引擎跑某个包，窗口由引擎自己提供
+   */
+  mode?: 'window' | 'android'
+  /** mode=window 时：目标窗口所属进程名，例如 MuMuPlayer.exe 对应的 MuMuPlayer。 */
+  processName?: string
+  /** mode=android 时：要在内置引擎里启动的应用包名。 */
+  androidPackage?: string
   /** 可选的窗口标题 / 类名，用于同一进程有多个窗口时精确定位。 */
   windowTitle?: string
   className?: string
@@ -77,6 +84,10 @@ export function isNativeModule(m: ModuleConfig): boolean {
 
 export function moduleSubtitle(m: ModuleConfig): string {
   if (isNativeModule(m)) {
+    if (m.native?.mode === 'android') {
+      const pkg = m.native.androidPackage?.trim()
+      return pkg ? `安卓应用 · ${pkg}` : '安卓应用 · 尚未选择包'
+    }
     const processName = m.native?.processName?.trim()
     return processName ? `原生应用 · ${processName}` : '原生应用 · 尚未绑定窗口'
   }

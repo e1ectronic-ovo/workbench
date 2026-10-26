@@ -23,7 +23,7 @@
           v-else
           type="button"
           class="native-btn native-btn--primary"
-          :disabled="busy || !supported || !native?.processName"
+          :disabled="busy || !supported || (!native?.processName && !isAndroidApp)"
           @click="mountExisting"
         >
           {{ busy ? '查找中…' : embedded ? '重新嵌入' : '查找并嵌入' }}
@@ -42,14 +42,9 @@
     <div ref="stage" class="native-stage">
       <div v-if="!embedded" class="native-empty">
         <div class="native-empty__icon">▣</div>
-        <h2>{{ native?.processName ? '原生窗口尚未嵌入' : '还没有绑定原生应用' }}</h2>
+        <h2>{{ emptyTitle }}</h2>
         <p v-if="error" class="native-empty__error">{{ error }}</p>
-        <p v-else-if="!native?.processName">
-          请到「设置 → 应用」编辑这个模块，选择模拟器或目标应用窗口。
-        </p>
-        <p v-else>
-          鲸汐会把这个进程的原生窗口放进当前区域；不是在截图，也不是视频投屏。
-        </p>
+        <p v-else>{{ emptyHint }}</p>
         <button
           v-if="native?.executablePath && !busy && supported"
           type="button"
@@ -123,6 +118,27 @@ let mountVersion = 0
 let mounted = false
 let detachRequested = false
 
+/** 内置引擎的窗口进程名：模块没显式配 processName 时由 launchApp 回填。 */
+const engineProcess = ref('')
+const isAndroidApp = computed(
+  () => props.module.native?.mode === 'android' && !!props.module.native?.androidPackage
+)
+
+const emptyTitle = computed(() => {
+  if (isAndroidApp.value) return '安卓应用尚未启动'
+  return native.value?.processName ? '原生窗口尚未嵌入' : '还没有绑定原生应用'
+})
+
+const emptyHint = computed(() => {
+  if (isAndroidApp.value) {
+    return '进入这个模块会自动启动引擎并打开应用；首次开机需要 1–3 分钟。'
+  }
+  if (!native.value?.processName) {
+    return '请到「设置 → 网站」编辑这个模块，选择模拟器或目标应用窗口。'
+  }
+  return '鲸汐会把这个进程的原生窗口放进当前区域；不是在截图，也不是视频投屏。'
+})
+
 function measure(): Pick<AndroidMountPayload, 'x' | 'y' | 'width' | 'height'> | null {
   const el = stage.value
   if (!el) return null
@@ -139,9 +155,10 @@ function measure(): Pick<AndroidMountPayload, 'x' | 'y' | 'width' | 'height'> | 
 function mountPayload(): AndroidMountPayload | null {
   const config = native.value
   const rect = measure()
-  if (!config?.processName || !rect) return null
+  const processName = config?.processName?.trim() || engineProcess.value
+  if (!processName || !rect) return null
   return {
-    processName: config.processName,
+    processName,
     title: config.windowTitle,
     className: config.className,
     ...rect
@@ -226,10 +243,35 @@ async function activate() {
     detachRequested = false
   }
 
+  // 绑定的是内置引擎里的应用：先把包拉起来（会顺带启动引擎并开机），再托管它的窗口
+  if (isAndroidApp.value) {
+    await ensureAndroidAppRunning()
+  }
+
   if (native.value?.launchOnOpen && native.value.executablePath) {
     await launchApp()
   } else {
     await mountExisting()
+  }
+}
+
+async function ensureAndroidAppRunning() {
+  const pkg = native.value?.androidPackage
+  if (!pkg || !bridge) return
+
+  const version = ++mountVersion
+  busy.value = true
+  try {
+    const launched = await bridge.launchApp(pkg)
+    if (launched?.windowProcess) {
+      engineProcess.value = launched.windowProcess
+    }
+  } catch (cause) {
+    if (version === mountVersion) {
+      error.value = messageOf(cause)
+    }
+  } finally {
+    if (version === mountVersion) busy.value = false
   }
 }
 

@@ -51,6 +51,24 @@ export interface AndroidStatus {
   handle: string
 }
 
+/** 内置 Android 引擎的状态。运行时由客户端自己准备，用户不需要装模拟器或 SDK。 */
+export interface AndroidEngineStatus {
+  installed: boolean
+  avdReady: boolean
+  state: 'notinstalled' | 'stopped' | 'starting' | 'running' | 'stopping'
+  serial: string
+  root: string
+  image: string
+  lastError: string
+  /** 引擎窗口所属进程（qemu-system-x86_64），模块绑定时用它 */
+  windowProcess: string
+}
+
+export interface AndroidAppsResult {
+  packages: string[]
+  windowProcess: string
+}
+
 /** 当前承载外壳：electron 是原版 Electron 壳，wpf 是 WebView2 + 原生窗口托管壳。 */
 export type WorkbenchShell = 'electron' | 'wpf'
 
@@ -152,6 +170,19 @@ export interface WorkbenchAPI {
     detach: () => Promise<AndroidStatus>
     status: () => Promise<AndroidStatus>
     onStatus: (cb: (status: AndroidStatus) => void) => () => void
+
+    engineStatus: () => Promise<AndroidEngineStatus>
+    prepare: () => Promise<AndroidEngineStatus>
+    startEngine: () => Promise<AndroidEngineStatus>
+    stopEngine: () => Promise<AndroidEngineStatus>
+    pickApk: () => Promise<string | null>
+    installApk: (path: string) => Promise<{ ok: boolean; output: string; packages: string[] }>
+    listApps: () => Promise<AndroidAppsResult>
+    launchApp: (
+      packageName: string
+    ) => Promise<{ ok: boolean; packageName: string; windowProcess: string }>
+    uninstallApp: (packageName: string) => Promise<{ ok: boolean; packageName: string }>
+    onProgress: (cb: (payload: { message: string }) => void) => () => void
   }
 }
 

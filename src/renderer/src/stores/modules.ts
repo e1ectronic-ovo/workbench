@@ -55,7 +55,10 @@ function isValidModule(m: unknown): m is ModuleConfig {
     (native === undefined ||
       (typeof native === 'object' &&
         native !== null &&
-        typeof (native as Record<string, unknown>).processName === 'string'))
+        // 窗口绑定要进程名，内置安卓引擎要包名，两者有一个即可
+        (typeof (native as Record<string, unknown>).processName === 'string' ||
+          typeof (native as Record<string, unknown>).androidPackage === 'string' ||
+          (native as Record<string, unknown>).mode === 'android')))
   )
 }
 
@@ -213,7 +216,9 @@ export const useModulesStore = defineStore('modules', () => {
     }
     if (patch.native !== undefined) {
       m.native = {
-        processName: patch.native.processName.trim(),
+        mode: patch.native.mode === 'android' ? 'android' : 'window',
+        processName: patch.native.processName?.trim() || undefined,
+        androidPackage: patch.native.androidPackage?.trim() || undefined,
         windowTitle: patch.native.windowTitle?.trim() || undefined,
         className: patch.native.className?.trim() || undefined,
         executablePath: patch.native.executablePath?.trim() || undefined,
