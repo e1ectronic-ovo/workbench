@@ -1,6 +1,23 @@
+export type ModuleKind = 'web' | 'native'
+
+export interface NativeAppConfig {
+  /** 目标窗口所属进程名，例如 MuMuPlayer.exe 对应的 MuMuPlayer。 */
+  processName: string
+  /** 可选的窗口标题 / 类名，用于同一进程有多个窗口时精确定位。 */
+  windowTitle?: string
+  className?: string
+  /** 可选：由鲸汐启动的模拟器或应用可执行文件。 */
+  executablePath?: string
+  arguments?: string
+  /** 进入模块时若窗口不存在，是否自动启动。 */
+  launchOnOpen?: boolean
+}
+
 export interface ModuleConfig {
   id: string
   name: string
+  /** 旧配置没有该字段时按普通网站处理。 */
+  kind?: ModuleKind
   url: string
   /** 无文字作后备图标（无 icon 文件时） */
   glyph?: string
@@ -10,6 +27,8 @@ export interface ModuleConfig {
   color: string
   /** 排序，越小越靠上 */
   order?: number
+  /** kind === 'native' 时描述要嵌入的原生窗口。 */
+  native?: NativeAppConfig
 }
 
 /**
@@ -50,4 +69,16 @@ export function createModuleId(name: string): string {
 
 export function moduleLabel(m: ModuleConfig): string {
   return m.glyph?.trim() || m.name.trim().slice(0, 1) || '?'
+}
+
+export function isNativeModule(m: ModuleConfig): boolean {
+  return m.kind === 'native'
+}
+
+export function moduleSubtitle(m: ModuleConfig): string {
+  if (isNativeModule(m)) {
+    const processName = m.native?.processName?.trim()
+    return processName ? `原生应用 · ${processName}` : '原生应用 · 尚未绑定窗口'
+  }
+  return m.url
 }

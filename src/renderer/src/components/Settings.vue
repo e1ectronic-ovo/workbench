@@ -21,9 +21,18 @@
       <!-- 网站 -->
       <div v-if="tab === 'modules'" class="tab-pane">
         <div class="pane-toolbar">
-          <p class="pane-hint">侧栏显示的摸鱼网站，图标自动使用站点 favicon。</p>
+          <p class="pane-hint">侧栏显示的模块：网站走内嵌浏览器，原生应用则直接把模拟器或本地程序的窗口托管进界面。</p>
           <div class="pane-actions">
-            <button class="mac-btn mac-btn--primary" type="button" @click="openCreate">添加网站</button>
+            <button
+              class="mac-btn mac-btn--secondary"
+              type="button"
+              :disabled="!nativeSupported"
+              :title="nativeSupported ? '把模拟器或本地程序的窗口嵌进模块区' : '当前外壳不支持原生窗口嵌入，请用 WPF 外壳启动'"
+              @click="openCreate('native')"
+            >
+              接入原生窗口
+            </button>
+            <button class="mac-btn mac-btn--primary" type="button" @click="openCreate('web')">添加网站</button>
           </div>
         </div>
 
@@ -40,7 +49,7 @@
               </span>
               <div class="mac-row__text">
                 <div class="mac-row__title">{{ m.name }}</div>
-                <div class="mac-row__sub" :title="m.url">{{ m.url }}</div>
+                <div class="mac-row__sub" :title="moduleSubtitle(m)">{{ moduleSubtitle(m) }}</div>
               </div>
             </div>
             <div class="mac-row__actions">
@@ -428,17 +437,96 @@
     <!-- 编辑 / 新建网站 -->
     <div v-if="dialogOpen" class="mac-sheet-backdrop" @click.self="closeDialog">
       <form class="mac-sheet" @submit.prevent="onSave">
-        <h2 class="mac-sheet__title">{{ editingId ? '编辑网站' : '添加网站' }}</h2>
+        <h2 class="mac-sheet__title">
+          {{ editingId ? '编辑模块' : form.kind === 'native' ? '接入原生窗口' : '添加网站' }}
+        </h2>
+
+        <div class="mac-field">
+          <span>类型</span>
+          <div class="kind-switch">
+            <button
+              type="button"
+              class="mac-btn"
+              :class="form.kind === 'web' ? 'mac-btn--primary' : 'mac-btn--ghost'"
+              @click="setKind('web')"
+            >
+              网站
+            </button>
+            <button
+              type="button"
+              class="mac-btn"
+              :class="form.kind === 'native' ? 'mac-btn--primary' : 'mac-btn--ghost'"
+              :disabled="!nativeSupported"
+              :title="nativeSupported ? '' : '当前外壳不支持原生窗口嵌入'"
+              @click="setKind('native')"
+            >
+              原生应用
+            </button>
+          </div>
+        </div>
 
         <label class="mac-field">
           <span>名称</span>
           <input v-model="form.name" required maxlength="32" placeholder="例如：小红书" />
         </label>
 
-        <label class="mac-field">
+        <label v-if="form.kind === 'web'" class="mac-field">
           <span>网址</span>
           <input v-model="form.url" required placeholder="https://example.com" spellcheck="false" />
         </label>
+
+        <template v-else>
+          <div class="mac-field">
+            <span>目标进程</span>
+            <div class="field-row">
+              <input
+                v-model="form.processName"
+                placeholder="例如 MuMuPlayer（不带 .exe）"
+                spellcheck="false"
+              />
+              <button
+                class="mac-btn mac-btn--secondary"
+                type="button"
+                :disabled="picking || !nativeSupported"
+                @click="pickNativeWindow"
+              >
+                {{ picking ? '选择中…' : '选择窗口' }}
+              </button>
+            </div>
+          </div>
+
+          <label class="mac-field">
+            <span>可执行文件（可选，用于自动启动）</span>
+            <input
+              v-model="form.executablePath"
+              placeholder="D:\…\MuMuPlayer.exe；留空则只嵌入已启动的窗口"
+              spellcheck="false"
+            />
+          </label>
+
+          <button type="button" class="field-toggle" @click="showNativeAdvanced = !showNativeAdvanced">
+            {{ showNativeAdvanced ? '收起高级匹配' : '高级匹配（多窗口时用）' }}
+          </button>
+
+          <template v-if="showNativeAdvanced">
+            <label class="mac-field">
+              <span>窗口标题包含</span>
+              <input v-model="form.windowTitle" placeholder="留空则不按标题过滤" spellcheck="false" />
+            </label>
+            <label class="mac-field">
+              <span>窗口类名</span>
+              <input v-model="form.className" placeholder="留空则不按类名过滤" spellcheck="false" />
+            </label>
+            <label class="mac-field">
+              <span>启动参数</span>
+              <input v-model="form.arguments" placeholder="传给可执行文件的命令行参数" spellcheck="false" />
+            </label>
+            <label class="check-row">
+              <input v-model="form.launchOnOpen" type="checkbox" />
+              <span>进入这个模块时自动启动并嵌入</span>
+            </label>
+          </template>
+        </template>
 
         <label class="mac-field color-field">
           <span>颜色</span>
@@ -526,7 +614,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { CLOSE_ACTION_LABELS, type CloseAction } from '../../../common/window'
-import { PRESET_COLORS, type ModuleConfig } from '../modules/registry'
+import { PRESET_COLORS, moduleSubtitle, type ModuleConfig, type ModuleKind } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
 import { useProxyStore } from '../stores/proxy'
 import { formatSubscriptionRemaining } from '../lib/proxy-format'
@@ -786,12 +874,24 @@ const accentPresets = [
 const dialogOpen = ref(false)
 const editingId = ref<string | null>(null)
 const saving = ref(false)
+const picking = ref(false)
 const formError = ref('')
+const showNativeAdvanced = ref(false)
 const form = reactive({
+  kind: 'web' as ModuleKind,
   name: '',
   url: '',
-  color: '#14B8A6'
+  color: '#14B8A6',
+  processName: '',
+  windowTitle: '',
+  className: '',
+  executablePath: '',
+  arguments: '',
+  launchOnOpen: false
 })
+
+/** 当前外壳是否提供原生窗口托管；Electron 壳没有。 */
+const nativeSupported = computed(() => !!window.workbench?.android)
 
 const pendingRemove = ref<ModuleConfig | null>(null)
 const removing = ref(false)
@@ -847,22 +947,81 @@ function onDensity(e: Event) {
   settings.patchAppearance({ density: compact ? 'compact' : 'comfortable' })
 }
 
-function openCreate() {
-  editingId.value = null
+function resetForm() {
+  form.kind = 'web'
   form.name = ''
   form.url = 'https://'
   form.color = '#14B8A6'
+  form.processName = ''
+  form.windowTitle = ''
+  form.className = ''
+  form.executablePath = ''
+  form.arguments = ''
+  form.launchOnOpen = false
+  showNativeAdvanced.value = false
+}
+
+function openCreate(kind: ModuleKind = 'web') {
+  editingId.value = null
+  resetForm()
+  form.kind = kind
+  form.url = kind === 'native' ? '' : 'https://'
   formError.value = ''
   dialogOpen.value = true
 }
 
 function openEdit(m: ModuleConfig) {
   editingId.value = m.id
+  resetForm()
+  form.kind = m.kind === 'native' ? 'native' : 'web'
   form.name = m.name
   form.url = m.url
   form.color = m.color
+  if (m.native) {
+    form.processName = m.native.processName ?? ''
+    form.windowTitle = m.native.windowTitle ?? ''
+    form.className = m.native.className ?? ''
+    form.executablePath = m.native.executablePath ?? ''
+    form.arguments = m.native.arguments ?? ''
+    form.launchOnOpen = m.native.launchOnOpen === true
+  }
+  showNativeAdvanced.value = !!(m.native?.windowTitle || m.native?.className || m.native?.executablePath || m.native?.arguments)
   formError.value = ''
   dialogOpen.value = true
+}
+
+/** 切换类型时清掉不属于该类型的输入，避免把网址写进原生模块。 */
+function setKind(kind: ModuleKind) {
+  if (form.kind === kind) return
+  form.kind = kind
+  formError.value = ''
+  if (kind === 'native') {
+    if (form.url === 'https://') form.url = ''
+  } else if (!form.url.trim() || form.url.trim() === '') {
+    form.url = 'https://'
+  }
+}
+
+async function pickNativeWindow() {
+  const api = window.workbench?.android
+  if (!api) {
+    formError.value = '当前外壳不支持选择窗口，请手动填写进程名'
+    return
+  }
+
+  picking.value = true
+  formError.value = ''
+  try {
+    const info = await api.pickWindow()
+    if (!info) return
+    form.processName = info.processName
+    form.windowTitle = info.title
+    form.className = info.className
+  } catch (e: any) {
+    formError.value = e?.message || '选择窗口失败'
+  } finally {
+    picking.value = false
+  }
 }
 
 function closeDialog() {
@@ -871,25 +1030,51 @@ function closeDialog() {
 
 async function onSave() {
   formError.value = ''
-  if (!form.name.trim() || !form.url.trim()) {
-    formError.value = '请填写名称和网址'
+  const isNative = form.kind === 'native'
+  if (!form.name.trim()) {
+    formError.value = '请填写名称'
     return
   }
+  if (isNative) {
+    if (!form.processName.trim()) {
+      formError.value = '请填写目标进程名，或用「选择窗口」自动填入'
+      return
+    }
+  } else if (!form.url.trim()) {
+    formError.value = '请填写网址'
+    return
+  }
+
   saving.value = true
   try {
     let id = editingId.value
+    const native = isNative
+      ? {
+          processName: form.processName.trim(),
+          windowTitle: form.windowTitle.trim() || undefined,
+          className: form.className.trim() || undefined,
+          executablePath: form.executablePath.trim() || undefined,
+          arguments: form.arguments.trim() || undefined,
+          launchOnOpen: form.launchOnOpen
+        }
+      : undefined
+    const url = isNative ? form.url.trim() : form.url
 
     if (id) {
       modulesStore.updateModule(id, {
+        kind: form.kind,
         name: form.name,
-        url: form.url,
-        color: form.color
+        url,
+        color: form.color,
+        native
       })
     } else {
       const created = modulesStore.addModule({
+        kind: form.kind,
         name: form.name,
-        url: form.url,
-        color: form.color
+        url,
+        color: form.color,
+        native
       })
       id = created.id
     }
@@ -1237,6 +1422,66 @@ async function confirmRemove() {
 
 .notice.is-error {
   color: var(--destructive);
+}
+
+/* 模块弹窗：类型切换与原生应用字段 */
+
+.kind-switch {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.kind-switch > .mac-btn {
+  flex: 1 1 0;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.field-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.field-row .mac-btn {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 var(--space-3);
+}
+
+.field-toggle {
+  align-self: flex-start;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.field-toggle:hover {
+  text-decoration: underline;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.check-row input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 </style>

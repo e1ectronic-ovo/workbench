@@ -13,6 +13,8 @@ import type {
 
 const api = {
   platform: process.platform as string,
+  shell: 'electron' as const,
+  impl: 'electron' as const,
 
   getOpenAtLogin: () =>
     ipcRenderer.invoke('settings:getOpenAtLogin') as Promise<{

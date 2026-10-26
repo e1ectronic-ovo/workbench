@@ -17,6 +17,17 @@
             <path d="M4 11.2 12 4.5l8 6.7" /><path d="M7 10.5V19h10v-8.5" />
           </svg>
         </button>
+        <button
+          v-if="isWebView2"
+          type="button"
+          class="mac-icon-btn"
+          title="在系统浏览器中打开（iframe 被站点拒绝内嵌时用这个）"
+          @click="openInBrowser"
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 4h6v6" /><path d="M20 4 10 14" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+          </svg>
+        </button>
       </div>
       <button
         type="button"
@@ -120,17 +131,35 @@
     </Transition>
 
     <div class="viewport">
-      <webview
-        v-for="tab in tabs"
-        :key="tab.id"
-        :ref="(el) => setWebviewRef(tab.id, el as HTMLElement | null)"
-        v-show="tab.id === activeTabId"
-        :src="tab.bootUrl"
-        :partition="partition"
-        :useragent="useragent"
-        allowpopups
-        class="wv"
-      />
+      <!-- Electron 外壳：用 <webview> 拿到完整导航/静音能力 -->
+      <template v-if="!isWebView2">
+        <webview
+          v-for="tab in tabs"
+          :key="tab.id"
+          :ref="(el) => setWebviewRef(tab.id, el as HTMLElement | null)"
+          v-show="tab.id === activeTabId"
+          :src="tab.bootUrl"
+          :partition="partition"
+          :useragent="useragent"
+          allowpopups
+          class="wv"
+        />
+      </template>
+
+      <!-- WPF 外壳：WebView2 不支持 <webview> 标签，降级成 iframe -->
+      <template v-else>
+        <iframe
+          v-for="tab in tabs"
+          :key="frameKey(tab.id)"
+          v-show="tab.id === activeTabId"
+          :src="tab.url"
+          :title="tabLabel(tab)"
+          class="wv"
+          referrerpolicy="no-referrer"
+          allow="clipboard-read; clipboard-write; fullscreen; autoplay; encrypted-media"
+          @load="onFrameLoad(tab.id)"
+        />
+      </template>
 
       <Transition name="bar">
         <div v-if="activeTab?.loading" class="loading-bar">
@@ -169,6 +198,32 @@ const props = defineProps<{
 }>()
 
 const store = useModulesStore()
+
+/**
+ * WPF 外壳（WebView2）不支持 Electron 的 <webview> 标签，这里降级成 iframe。
+ * 代价：站点可以拒绝被内嵌，且拿不到标题/前进后退——工具栏会相应禁用并提供「用浏览器打开」。
+ */
+const isWebView2 = window.workbench?.impl === 'webview2'
+const frameNonces = ref<Record<string, number>>({})
+
+function frameKey(tabId: string): string {
+  return `${tabId}#${frameNonces.value[tabId] ?? 0}`
+}
+
+/** 强制重挂 iframe，实现刷新 */
+function bumpFrame(tabId: string): void {
+  frameNonces.value = { ...frameNonces.value, [tabId]: (frameNonces.value[tabId] ?? 0) + 1 }
+}
+
+function onFrameLoad(tabId: string): void {
+  patchTab(tabId, { loading: false })
+  if (tabId === activeTabId.value) syncModuleState()
+}
+
+function openInBrowser(): void {
+  const url = activeTab.value?.url
+  if (url) void window.workbench?.openExternal(url)
+}
 
 const homeUrl = store.states[props.module.id]?.url || props.module.url
 const tabs = ref<PageTab[]>([createPageTab(homeUrl, props.module.name)])
@@ -224,6 +279,11 @@ function activeWv(): WebviewEl | undefined {
 }
 
 function syncNav(el?: WebviewEl) {
+  if (isWebView2) {
+    canBack.value = false
+    canForward.value = false
+    return
+  }
   const target = el ?? activeWv()
   if (!target) {
     canBack.value = false
@@ -357,14 +417,21 @@ function closeTab(id: string) {
 }
 
 function back() {
+  if (isWebView2) return
   activeWv()?.goBack()
 }
 function forward() {
+  if (isWebView2) return
   activeWv()?.goForward()
 }
 
 /** 刷新指定标签；加载中时改为停止 */
 function reloadTab(tabId = activeTabId.value) {
+  if (isWebView2) {
+    bumpFrame(tabId)
+    patchTab(tabId, { loading: true })
+    return
+  }
   const el = webviewRefs.get(tabId)
   if (!el) return
   const tab = tabs.value.find((t) => t.id === tabId)
@@ -397,17 +464,27 @@ function toggleMute(tabId: string) {
   }
 }
 
+/** 站内导航：Electron 走 webview.loadURL，WPF 壳靠改 src + 重挂 iframe */
+function navigateTo(tabId: string, url: string) {
+  patchTab(tabId, { url })
+  if (isWebView2) {
+    patchTab(tabId, { loading: true })
+    bumpFrame(tabId)
+    return
+  }
+  try {
+    webviewRefs.get(tabId)?.loadURL(url)
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 回到该网站配置的首页地址 */
 function goHome() {
   const url = props.module.url
   if (!url) return
-  patchTab(activeTabId.value, { url })
+  navigateTo(activeTabId.value, url)
   store.setUrl(props.module.id, url)
-  try {
-    activeWv()?.loadURL(url)
-  } catch {
-    /* ignore */
-  }
   syncModuleState()
 }
 
@@ -426,9 +503,8 @@ function onSubmit() {
   const s = draft.value.trim()
   if (!s) return
   const normalized = normalize(s)
-  patchTab(activeTabId.value, { url: normalized })
+  navigateTo(activeTabId.value, normalized)
   store.setUrl(props.module.id, normalized)
-  activeWv()?.loadURL(normalized)
   syncModuleState()
 }
 

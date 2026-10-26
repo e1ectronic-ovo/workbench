@@ -19,8 +19,49 @@ export type WorkbenchPlatform =
   | 'sunos'
   | string
 
+export interface AndroidWindowInfo {
+  handle: string
+  processId: number
+  processName: string
+  title: string
+  className: string
+  display: string
+}
+
+export interface AndroidMountPayload {
+  processName: string
+  title?: string
+  className?: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface AndroidLaunchPayload extends AndroidMountPayload {
+  executablePath: string
+  arguments?: string
+}
+
+export interface AndroidStatus {
+  embedded: boolean
+  processName: string
+  title: string
+  className: string
+  handle: string
+}
+
+/** 当前承载外壳：electron 是原版 Electron 壳，wpf 是 WebView2 + 原生窗口托管壳。 */
+export type WorkbenchShell = 'electron' | 'wpf'
+
+/** 外壳实现：决定网页模块用 <webview> 还是 <iframe> 渲染。 */
+export type WorkbenchImpl = 'electron' | 'webview2'
+
 export interface WorkbenchAPI {
   platform: WorkbenchPlatform
+  /** 旧版 preload 没有该字段，缺省按 electron 处理。 */
+  shell?: WorkbenchShell
+  impl?: WorkbenchImpl
   getOpenAtLogin: () => Promise<{
     openAtLogin: boolean
     openAsHidden: boolean
@@ -95,6 +136,22 @@ export interface WorkbenchAPI {
     removeProfile: (id: string) => Promise<ProxyActionResult>
     renameProfile: (id: string, name: string) => Promise<ProxyActionResult>
     onState: (cb: () => void) => () => void
+  }
+
+  /**
+   * 原生窗口托管能力。只有 WPF 外壳（WebView2 + HwndHost）提供；
+   * Electron 外壳没有可用的原生窗口托管通道，因此这里必须是可选的。
+   */
+  android?: {
+    /** 取消选择时返回 null。 */
+    pickWindow: () => Promise<AndroidWindowInfo | null>
+    mount: (payload: AndroidMountPayload) => Promise<AndroidStatus>
+    launch: (payload: AndroidLaunchPayload) => Promise<AndroidStatus>
+    updateBounds: (payload: Pick<AndroidMountPayload, 'x' | 'y' | 'width' | 'height'>) => Promise<AndroidStatus>
+    deactivate: () => Promise<AndroidStatus>
+    detach: () => Promise<AndroidStatus>
+    status: () => Promise<AndroidStatus>
+    onStatus: (cb: (status: AndroidStatus) => void) => () => void
   }
 }
 
