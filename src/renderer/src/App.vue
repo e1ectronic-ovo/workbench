@@ -2,6 +2,7 @@
   <div class="workbench">
     <WhaleThemeDecor v-if="pathVariant" :variant="pathVariant" />
     <EvaThemeDecor v-else-if="evaVariant" :variant="evaVariant" />
+    <MegumiThemeDecor v-else-if="megumiVariant" />
     <header class="window-chrome">
       <WindowControls v-if="customChrome" />
       <div v-else class="mac-traffic-spacer" aria-hidden="true" />
@@ -62,9 +63,10 @@ import Settings from './components/Settings.vue'
 import WindowControls from './components/WindowControls.vue'
 import WhaleThemeDecor from './components/WhaleThemeDecor.vue'
 import EvaThemeDecor from './components/EvaThemeDecor.vue'
+import MegumiThemeDecor from './components/MegumiThemeDecor.vue'
 import { useReminderSync } from './composables/useReminderSync'
 import { useModulesStore } from './stores/modules'
-import { isEvaTheme, isPathSceneTheme, useSettingsStore } from './stores/settings'
+import { isEvaTheme, isMegumiTheme, isPathSceneTheme, useSettingsStore } from './stores/settings'
 
 type View = 'home' | 'module' | 'settings'
 
@@ -94,6 +96,11 @@ const pathVariant = computed(() => {
 const evaVariant = computed(() => {
   const theme = settings.appearance.theme
   return isEvaTheme(theme) ? theme : null
+})
+
+const megumiVariant = computed(() => {
+  const theme = settings.appearance.theme
+  return isMegumiTheme(theme) ? theme : null
 })
 
 function onSelect(id: string) {

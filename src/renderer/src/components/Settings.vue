@@ -536,6 +536,7 @@ import {
   useSettingsStore,
   EVA_ACCENT,
   NERV_ACCENT,
+  MEGUMI_ACCENT,
   ORCA_ACCENT,
   WHALE_ACCENT,
   type CustomThemeColors,
@@ -548,6 +549,7 @@ import orcaPreviewDay from '../assets/orca-link/light-hero.webp'
 import orcaPreviewNight from '../assets/orca-link/dark-hero.webp'
 import evaPreview from '../assets/eva/eva-preview.png'
 import evaRedScene from '../assets/eva/eva-red-scene.webp'
+import megumiScene from '../assets/megumi/megumi-scene.jpg'
 
 const modulesStore = useModulesStore()
 const settings = useSettingsStore()
@@ -762,6 +764,13 @@ const themeOptions: {
     preview: '',
     previewImage: evaRedScene
   },
+  {
+    id: 'megumi',
+    label: '路人女主 · 加藤惠',
+    desc: '黄昏教室 · 淡色留白',
+    preview: '',
+    previewImage: megumiScene
+  },
   { id: 'custom', label: '自定义', desc: '自己调配背景与侧栏颜色', preview: 'linear-gradient(135deg, #dce8f5, #ffffff)' }
 ]
 
@@ -819,6 +828,7 @@ function onThemeSelect(id: ThemeId) {
   if (id === 'orca' || id === 'orca-night') patch.accent = ORCA_ACCENT
   if (id === 'eva') patch.accent = EVA_ACCENT
   if (id === 'eva-red') patch.accent = NERV_ACCENT
+  if (id === 'megumi') patch.accent = MEGUMI_ACCENT
   if (id === 'custom') patch.custom = { ...customColors.value }
   settings.patchAppearance(patch)
 }

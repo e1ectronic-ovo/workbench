@@ -80,6 +80,20 @@ const bgSrc = computed(() => {
   user-select: none;
 }
 
+/**
+ * 女仆工坊这组插画整体偏亮（宫殿天光 + 白色围裙），而这套主题的文字是浅色的，
+ * 直接压上去会糊成一片。这里加一层同色系暗场把底图压下去，
+ * 保证卡片外的文字（侧栏、状态栏、标题栏）也能站得住。
+ */
+.scene-skin.whale::after,
+.scene-skin.whale-night::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(7, 12, 24, 0.44) 0%, rgba(7, 12, 24, 0.58) 100%);
+  pointer-events: none;
+}
+
 .scene-skin.orca .scene-skin__bg {
   background-color: #eef3fa;
 }

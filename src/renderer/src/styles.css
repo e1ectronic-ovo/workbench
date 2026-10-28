@@ -80,11 +80,30 @@
   --content-max: 720px;
 
   --blur-chrome: 20px;
+  /* 面板透明度按明暗分档：浅色主题 42% 的白底已经足够压住背景，
+     暗色主题的深底 42% 会让背后的亮图透上来，浅字就糊了，所以暗色下要更实 */
   --home-panel-alpha: 42%;
-  --home-panel-bg: color-mix(in srgb, var(--surface-raised) 42%, transparent);
+  --panel-alpha: 78%;
+  --home-panel-bg: color-mix(in srgb, var(--surface-raised) var(--home-panel-alpha), transparent);
   --home-panel-border: color-mix(in srgb, var(--border) 60%, transparent);
 
   color-scheme: light;
+}
+
+html[data-scheme='dark'] {
+  /* 90% 起步：插画里的大块白色（围裙、天光）透过 18% 也会把正文压灰 */
+  --home-panel-alpha: 90%;
+  --panel-alpha: 94%;
+}
+
+/**
+ * 女仆工坊这两套的插画大面积白色（围裙、天光、宫殿地面），
+ * 留一点透光就会在卡片里形成亮斑，把次要文字压灰。这两套直接做到接近实心。
+ */
+html[data-theme='whale'],
+html[data-theme='whale-night'] {
+  --home-panel-alpha: 96%;
+  --panel-alpha: 97%;
 }
 
 .workbench-home .home-panel {

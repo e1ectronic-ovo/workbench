@@ -8,6 +8,7 @@ export type ThemeId =
   | 'orca-night'
   | 'eva'
   | 'eva-red'
+  | 'megumi'
   | 'custom'
 
 /** 走 WhaleThemeDecor（位图场景层）的主题 */
@@ -23,6 +24,13 @@ export function isPathSceneTheme(id: ThemeId): id is SceneThemeId {
 
 export function isEvaTheme(id: ThemeId): id is EvaThemeId {
   return id === 'eva' || id === 'eva-red'
+}
+
+/** 走 MegumiThemeDecor（单张立绘背景层）的主题 */
+export type MegumiThemeId = 'megumi'
+
+export function isMegumiTheme(id: ThemeId): id is MegumiThemeId {
+  return id === 'megumi'
 }
 export type DensityId = 'comfortable' | 'compact'
 
@@ -48,6 +56,8 @@ export const ORCA_ACCENT = '#086CFF'
 export const EVA_ACCENT = '#A3FF12'
 /** 警戒态的血红，等同 --eva-key */
 export const NERV_ACCENT = '#FF2D2D'
+/** 加藤惠：贝雷帽的白 + 蝴蝶结的红，取蝴蝶结那一抹 */
+export const MEGUMI_ACCENT = '#B85461'
 
 export const DEFAULT_CUSTOM_COLORS: CustomThemeColors = {
   bg: '#eef4fc',
@@ -229,6 +239,34 @@ const THEMES: Record<ThemeId, ThemeTokens> = {
     chromeBg: 'rgba(10, 5, 6, 0.9)',
     chromeFg: '#d8bdbc'
   },
+  /**
+   * 加藤惠 / 路人女主。素材是黄昏教室走廊里的立绘，整体偏亮偏淡，
+   * 所以走 light scheme：深色字压在浅色底上，安静、低饱和，
+   * 唯一的高饱和只留在蝴蝶结的红（accent）上。
+   */
+  megumi: {
+    bg: '#eef2f6',
+    bgElevated: 'rgba(255, 255, 255, 0.82)',
+    surface: 'rgba(255, 255, 255, 0.76)',
+    surfaceSecondary: 'rgba(246, 249, 252, 0.7)',
+    surfaceRaised: 'rgba(255, 255, 255, 0.9)',
+    surfaceHover: 'rgba(184, 84, 97, 0.08)',
+    surfaceActive: 'rgba(184, 84, 97, 0.14)',
+    fillTertiary: 'rgba(184, 84, 97, 0.1)',
+    navHover: 'rgba(184, 84, 97, 0.07)',
+    navSelected: 'rgba(184, 84, 97, 0.15)',
+    navIcon: '#9d7a80',
+    sidebarBg: 'rgba(255, 255, 255, 0.58)',
+    border: 'rgba(120, 138, 160, 0.2)',
+    borderStrong: 'rgba(120, 138, 160, 0.34)',
+    text: '#2b3340',
+    textSecondary: '#586474',
+    textMuted: '#7d8797',
+    onAccent: '#ffffff',
+    scheme: 'light',
+    chromeBg: 'rgba(255, 255, 255, 0.78)',
+    chromeFg: '#586474'
+  },
   custom: {
     bg: '#eef4fc',
     bgElevated: '#eef4fc',
@@ -350,6 +388,10 @@ function applyAppearance(a: AppearanceSettings) {
   root.style.setProperty('--accent-soft', `${a.accent}29`)
   root.style.setProperty('--border-focus', `${a.accent}a6`)
   root.style.setProperty('--on-accent', t.onAccent)
+  // chrome 系列之前只在 token 表里定义、从来没写到 CSS 变量上，
+  // 导致 whale-theme.css 里的 var(--chrome-bg) 取到空值、整条 background 失效
+  root.style.setProperty('--chrome-bg', t.chromeBg)
+  root.style.setProperty('--chrome-fg', t.chromeFg)
   const compact = a.density === 'compact'
   root.style.setProperty('--sidebar-w', compact ? '72px' : '232px')
   root.dataset.sidebarLabels = compact || !a.showModuleLabels ? 'false' : 'true'
