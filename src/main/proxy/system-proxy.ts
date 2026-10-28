@@ -18,31 +18,41 @@ interface ProxySnapshot {
   override: string
 }
 
-function run(command: string, args: string[]): Promise<string> {
+/**
+ * 读写系统代理。
+ *
+ * 这里**不能**用 reg.exe：某些受限环境（企业策略、安全软件、本机沙箱）会把 reg.exe
+ * 列入程序黑名单，一旦 spawn 就被拦，轻则代理开关失效，重则整个进程被带走。
+ * 改用 PowerShell 的注册表 provider，兼容性更好；进程启动开销靠批量读写摊掉。
+ */
+function runPowerShell(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(command, args, { windowsHide: true }, (error, stdout, stderr) => {
-      if (error) {
-        reject(new Error(stderr?.trim() || error.message))
-        return
+    execFile(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { windowsHide: true, timeout: 12000 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr?.trim() || error.message))
+          return
+        }
+        resolve(stdout)
       }
-      resolve(stdout)
-    })
+    )
   })
 }
 
-async function queryValue(name: string): Promise<string | null> {
-  try {
-    const out = await run('reg', ['query', REG_KEY, '/v', name])
-    const match = out.match(new RegExp(`${name}\\s+REG_\\w+\\s+(.*)`, 'i'))
-    return match ? match[1].trim() : null
-  } catch {
-    // 键不存在时 reg 返回非零码，按"未设置"处理
-    return null
-  }
-}
+type RegistryType = 'REG_SZ' | 'REG_DWORD'
 
-async function setValue(name: string, type: 'REG_SZ' | 'REG_DWORD', value: string): Promise<void> {
-  await run('reg', ['add', REG_KEY, '/v', name, '/t', type, '/d', value, '/f'])
+/** 批量写，减少 powershell 进程启动次数（每次约 200–300ms） */
+async function writeValues(entries: Array<[string, RegistryType, string]>): Promise<void> {
+  if (entries.length === 0) return
+  const parts = entries.map(([name, type, value]) => {
+    const psType = type === 'REG_DWORD' ? 'DWord' : 'String'
+    const psValue = type === 'REG_DWORD' ? value : `'${value.replace(/'/g, "''")}'`
+    return `Set-ItemProperty -Path '${REG_KEY}' -Name '${name}' -Value ${psValue} -Type ${psType}`
+  })
+  await runPowerShell(['$ErrorActionPreference = "Stop"', ...parts].join('; '))
 }
 
 /** 通知系统设置已变更，浏览器等 WinINET 客户端会立刻重读 */
@@ -67,11 +77,23 @@ export function isSupported(): boolean {
 }
 
 async function readRaw(): Promise<ProxySnapshot> {
-  const enabled = await queryValue('ProxyEnable')
+  // 一次读完三个值；键不存在时全部按"未设置"处理
+  const script = [
+    `$k = Get-ItemProperty -Path '${REG_KEY}' -ErrorAction SilentlyContinue`,
+    `if ($null -eq $k) { '||' } else { '{0}|{1}|{2}' -f ([string]$k.ProxyEnable), ([string]$k.ProxyServer), ([string]$k.ProxyOverride) }`
+  ].join('; ')
+  let out = ''
+  try {
+    out = (await runPowerShell(script)).trim()
+  } catch {
+    return { enabled: false, server: '', override: '' }
+  }
+  const [rawEnable = '', server = '', override = ''] = out.split('|')
   return {
-    enabled: enabled === '0x1',
-    server: (await queryValue('ProxyServer')) ?? '',
-    override: (await queryValue('ProxyOverride')) ?? ''
+    // PowerShell 里 REG_DWORD 取出来是 1 / 0
+    enabled: rawEnable.trim() === '1',
+    server: server.trim(),
+    override: override.trim()
   }
 }
 
@@ -109,9 +131,12 @@ function clearBackup(): void {
 }
 
 async function restore(snapshot: ProxySnapshot): Promise<void> {
-  await setValue('ProxyEnable', 'REG_DWORD', snapshot.enabled ? '1' : '0')
-  if (snapshot.server) await setValue('ProxyServer', 'REG_SZ', snapshot.server)
-  if (snapshot.override) await setValue('ProxyOverride', 'REG_SZ', snapshot.override)
+  const entries: Array<[string, RegistryType, string]> = [
+    ['ProxyEnable', 'REG_DWORD', snapshot.enabled ? '1' : '0']
+  ]
+  if (snapshot.server) entries.push(['ProxyServer', 'REG_SZ', snapshot.server])
+  if (snapshot.override) entries.push(['ProxyOverride', 'REG_SZ', snapshot.override])
+  await writeValues(entries)
 }
 
 export async function enable(port: number): Promise<SystemProxyState> {
@@ -126,9 +151,11 @@ export async function enable(port: number): Promise<SystemProxyState> {
   }
 
   try {
-    await setValue('ProxyEnable', 'REG_DWORD', '1')
-    await setValue('ProxyServer', 'REG_SZ', server)
-    await setValue('ProxyOverride', 'REG_SZ', DEFAULT_BYPASS)
+    await writeValues([
+      ['ProxyEnable', 'REG_DWORD', '1'],
+      ['ProxyServer', 'REG_SZ', server],
+      ['ProxyOverride', 'REG_SZ', DEFAULT_BYPASS]
+    ])
 
     // 写后校验：被安全软件拦下时不要把"以为设上了"的状态留给界面
     const check = await readRaw()
@@ -153,7 +180,7 @@ export async function disable(): Promise<SystemProxyState> {
     await restore(backup)
     clearBackup()
   } else {
-    await setValue('ProxyEnable', 'REG_DWORD', '0')
+    await writeValues([['ProxyEnable', 'REG_DWORD', '0']])
   }
 
   broadcastChange()
