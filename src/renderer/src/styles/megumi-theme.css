@@ -1,0 +1,61 @@
+/* 加藤惠主题（浅色 / 夜）— 与 whale-theme.css 同一套场景皮肤机制，
+   区别只在立绘是右侧一条，左侧由主题底色接住 */
+
+html[data-theme^='megumi'] .workbench {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+html[data-theme^='megumi'] .workbench > :not(.scene-skin),
+html[data-theme^='megumi'] .app-body > :not(.scene-skin) {
+  position: relative;
+  z-index: 1;
+}
+
+/* 标题栏：立绘在右侧，顶栏做成接近实色，别让发丝从字缝里穿过去 */
+html[data-theme^='megumi'] .window-chrome {
+  background: color-mix(in srgb, var(--surface-raised) 84%, transparent);
+  backdrop-filter: blur(16px) saturate(1.06);
+  border-bottom-color: color-mix(in srgb, var(--border-strong) 70%, transparent);
+}
+
+html[data-theme^='megumi'] .sidebar {
+  background: color-mix(in srgb, var(--sidebar-bg) 62%, transparent);
+  backdrop-filter: blur(20px) saturate(1.1);
+  border-right-color: color-mix(in srgb, var(--border-strong) 66%, transparent);
+}
+
+html[data-theme^='megumi'] .main-pane,
+html[data-theme^='megumi'] .guest-popup,
+html[data-theme^='megumi'] .mac-page,
+html[data-theme^='megumi'] .workbench-home {
+  background: transparent;
+}
+
+/* 卡片：主题底色和插画亮度差得多，留太多透光就会看不出卡片边界 */
+html[data-theme^='megumi'] .workbench-home .home-panel,
+html[data-theme^='megumi'] .panel,
+html[data-theme^='megumi'] .mac-group {
+  background: color-mix(in srgb, var(--surface-raised) 96%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(1.04);
+  border-color: color-mix(in srgb, var(--border-strong) 92%, transparent);
+}
+
+html[data-theme^='megumi'] .statusbar,
+html[data-theme^='megumi'] .titlebar {
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(14px);
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+html[data-theme^='megumi'] .nav-item.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+/* 设置页这类整块面板，纸质背景上要保证正文和底色的对比不靠透明撑 */
+html[data-theme^='megumi'] .mac-sheet {
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(22px) saturate(1.05);
+}

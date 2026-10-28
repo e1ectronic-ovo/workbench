@@ -5,6 +5,7 @@ import './styles.css'
 import './styles/mac.css'
 import './styles/whale-theme.css'
 import './styles/eva-theme.css'
+import './styles/megumi-theme.css'
 import { useSettingsStore } from './stores/settings'
 
 const app = createApp(App)

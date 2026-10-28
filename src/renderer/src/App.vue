@@ -2,7 +2,7 @@
   <div class="workbench">
     <WhaleThemeDecor v-if="pathVariant" :variant="pathVariant" />
     <EvaThemeDecor v-else-if="evaVariant" :variant="evaVariant" />
-    <MegumiThemeDecor v-else-if="megumiVariant" />
+    <MegumiThemeDecor v-else-if="megumiVariant" :variant="megumiVariant" />
     <header class="window-chrome">
       <WindowControls v-if="customChrome" />
       <div v-else class="mac-traffic-spacer" aria-hidden="true" />

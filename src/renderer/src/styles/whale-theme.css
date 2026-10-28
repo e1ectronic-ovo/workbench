@@ -3,8 +3,7 @@
 html[data-theme='whale'] .workbench,
 html[data-theme='whale-night'] .workbench,
 html[data-theme='orca'] .workbench,
-html[data-theme='orca-night'] .workbench,
-html[data-theme='megumi'] .workbench {
+html[data-theme='orca-night'] .workbench {
   position: relative;
   overflow: hidden;
   background: #0a1220;
@@ -14,20 +13,14 @@ html[data-theme='orca'] .workbench {
   background: #eef3fa;
 }
 
-html[data-theme='megumi'] .workbench {
-  background: #eef2f6;
-}
-
 html[data-theme='whale'] .workbench > :not(.scene-skin),
 html[data-theme='whale-night'] .workbench > :not(.scene-skin),
 html[data-theme='orca'] .workbench > :not(.scene-skin),
 html[data-theme='orca-night'] .workbench > :not(.scene-skin),
-html[data-theme='megumi'] .workbench > :not(.scene-skin),
 html[data-theme='whale'] .app-body > :not(.scene-skin),
 html[data-theme='whale-night'] .app-body > :not(.scene-skin),
 html[data-theme='orca'] .app-body > :not(.scene-skin),
-html[data-theme='orca-night'] .app-body > :not(.scene-skin),
-html[data-theme='megumi'] .app-body > :not(.scene-skin) {
+html[data-theme='orca-night'] .app-body > :not(.scene-skin) {
   position: relative;
   z-index: 1;
 }
@@ -35,8 +28,7 @@ html[data-theme='megumi'] .app-body > :not(.scene-skin) {
 html[data-theme='whale'] .window-chrome,
 html[data-theme='whale-night'] .window-chrome,
 html[data-theme='orca'] .window-chrome,
-html[data-theme='orca-night'] .window-chrome,
-html[data-theme='megumi'] .window-chrome {
+html[data-theme='orca-night'] .window-chrome {
   /* 原来这里用 var(--chrome-bg)，但 token 里 chromeBg 是半透明的（0.88），
      再乘 48% 只剩 42%，亮底图直接透上来。暗色两套改用实色 bg 压底。 */
   background: color-mix(
@@ -56,8 +48,7 @@ html[data-theme='whale-night'] .window-chrome {
 html[data-theme='whale'] .sidebar,
 html[data-theme='whale-night'] .sidebar,
 html[data-theme='orca'] .sidebar,
-html[data-theme='orca-night'] .sidebar,
-html[data-theme='megumi'] .sidebar {
+html[data-theme='orca-night'] .sidebar {
   background: color-mix(in srgb, var(--sidebar-bg) 38%, transparent);
   backdrop-filter: blur(18px) saturate(1.12);
   border-right-color: color-mix(in srgb, var(--accent) 26%, transparent);
@@ -74,12 +65,10 @@ html[data-theme='whale'] .main-pane,
 html[data-theme='whale-night'] .main-pane,
 html[data-theme='orca'] .main-pane,
 html[data-theme='orca-night'] .main-pane,
-html[data-theme='megumi'] .main-pane,
 html[data-theme='whale'] .guest-popup,
 html[data-theme='whale-night'] .guest-popup,
 html[data-theme='orca'] .guest-popup,
-html[data-theme='orca-night'] .guest-popup,
-html[data-theme='megumi'] .guest-popup {
+html[data-theme='orca-night'] .guest-popup {
   background: transparent;
 }
 
@@ -87,20 +76,17 @@ html[data-theme='whale'] .mac-page,
 html[data-theme='whale-night'] .mac-page,
 html[data-theme='orca'] .mac-page,
 html[data-theme='orca-night'] .mac-page,
-html[data-theme='megumi'] .mac-page,
 html[data-theme='whale'] .workbench-home,
 html[data-theme='whale-night'] .workbench-home,
 html[data-theme='orca'] .workbench-home,
-html[data-theme='orca-night'] .workbench-home,
-html[data-theme='megumi'] .workbench-home {
+html[data-theme='orca-night'] .workbench-home {
   background: transparent;
 }
 
 html[data-theme='whale'] .workbench-home .home-panel,
 html[data-theme='whale-night'] .workbench-home .home-panel,
 html[data-theme='orca'] .workbench-home .home-panel,
-html[data-theme='orca-night'] .workbench-home .home-panel,
-html[data-theme='megumi'] .workbench-home .home-panel {
+html[data-theme='orca-night'] .workbench-home .home-panel {
   background: var(--home-panel-bg) !important;
   backdrop-filter: blur(16px) saturate(1.08);
   border-color: var(--home-panel-border) !important;
@@ -119,16 +105,10 @@ html[data-theme='whale-night'] .mac-group {
   border-color: color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
-html[data-theme='whale'] .panel,
-html[data-theme='whale-night'] .panel,
-html[data-theme='whale'] .mac-group,
-html[data-theme='whale-night'] .mac-group,
 html[data-theme='orca'] .panel,
 html[data-theme='orca-night'] .panel,
 html[data-theme='orca'] .mac-group,
-html[data-theme='orca-night'] .mac-group,
-html[data-theme='megumi'] .mac-group,
-html[data-theme='megumi'] .panel {
+html[data-theme='orca-night'] .mac-group {
   background: color-mix(in srgb, var(--surface-raised) var(--panel-alpha), transparent);
   backdrop-filter: blur(16px) saturate(1.08);
   border-color: color-mix(in srgb, var(--accent) 26%, transparent);
@@ -138,12 +118,10 @@ html[data-theme='whale'] .statusbar,
 html[data-theme='whale-night'] .statusbar,
 html[data-theme='orca'] .statusbar,
 html[data-theme='orca-night'] .statusbar,
-html[data-theme='megumi'] .statusbar,
 html[data-theme='whale'] .titlebar,
 html[data-theme='whale-night'] .titlebar,
 html[data-theme='orca'] .titlebar,
-html[data-theme='orca-night'] .titlebar,
-html[data-theme='megumi'] .titlebar {
+html[data-theme='orca-night'] .titlebar {
   background: color-mix(in srgb, var(--bg-elevated) 58%, transparent);
   backdrop-filter: blur(14px);
   border-color: color-mix(in srgb, var(--accent) 16%, transparent);
@@ -152,23 +130,12 @@ html[data-theme='megumi'] .titlebar {
 html[data-theme='whale'] .nav-item.active,
 html[data-theme='whale-night'] .nav-item.active,
 html[data-theme='orca'] .nav-item.active,
-html[data-theme='orca-night'] .nav-item.active,
-html[data-theme='megumi'] .nav-item.active {
+html[data-theme='orca-night'] .nav-item.active {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent);
 }
 
 /* 底栏与标题栏同理：bg-elevated 自己有 0.82 的透明度，再乘 58% 只剩 0.48 */
-/* 加藤惠这套的背景是插画而不是纯色，卡片同样需要更实，
-   否则白色半透明卡片会和背后的亮部糊在一起、看不出边界 */
-html[data-theme='megumi'] .workbench-home .home-panel,
-html[data-theme='megumi'] .panel,
-html[data-theme='megumi'] .mac-group {
-  background: color-mix(in srgb, var(--surface-raised) 88%, transparent) !important;
-  backdrop-filter: blur(18px) saturate(1.04);
-  border-color: color-mix(in srgb, var(--border-strong) 88%, transparent);
-}
-
 html[data-theme='whale'] .statusbar,
 html[data-theme='whale-night'] .statusbar,
 html[data-theme='whale'] .titlebar,

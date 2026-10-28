@@ -9,6 +9,7 @@ export type ThemeId =
   | 'eva'
   | 'eva-red'
   | 'megumi'
+  | 'megumi-night'
   | 'custom'
 
 /** 走 WhaleThemeDecor（位图场景层）的主题 */
@@ -27,10 +28,10 @@ export function isEvaTheme(id: ThemeId): id is EvaThemeId {
 }
 
 /** 走 MegumiThemeDecor（单张立绘背景层）的主题 */
-export type MegumiThemeId = 'megumi'
+export type MegumiThemeId = 'megumi' | 'megumi-night'
 
 export function isMegumiTheme(id: ThemeId): id is MegumiThemeId {
-  return id === 'megumi'
+  return id === 'megumi' || id === 'megumi-night'
 }
 export type DensityId = 'comfortable' | 'compact'
 
@@ -58,6 +59,8 @@ export const EVA_ACCENT = '#A3FF12'
 export const NERV_ACCENT = '#FF2D2D'
 /** 加藤惠：贝雷帽的白 + 蝴蝶结的红，取蝴蝶结那一抹 */
 export const MEGUMI_ACCENT = '#B85461'
+/** 暗色版同一个红要提亮，压在深蓝底上才够对比 */
+export const MEGUMI_NIGHT_ACCENT = '#E9899B'
 
 export const DEFAULT_CUSTOM_COLORS: CustomThemeColors = {
   bg: '#eef4fc',
@@ -240,7 +243,7 @@ const THEMES: Record<ThemeId, ThemeTokens> = {
     chromeFg: '#d8bdbc'
   },
   /**
-   * 加藤惠 / 路人女主。素材是黄昏教室走廊里的立绘，整体偏亮偏淡，
+   * 加藤惠 / 路人女主。素材是樱花街景与黄昏天台，整体偏亮偏淡，
    * 所以走 light scheme：深色字压在浅色底上，安静、低饱和，
    * 唯一的高饱和只留在蝴蝶结的红（accent）上。
    */
@@ -266,6 +269,34 @@ const THEMES: Record<ThemeId, ThemeTokens> = {
     scheme: 'light',
     chromeBg: 'rgba(255, 255, 255, 0.78)',
     chromeFg: '#586474'
+  },
+  /**
+   * 加藤惠 · 夜。同一个人的黄昏天台，入夜后的深蓝紫底。
+   * 底色压到 #14161f，只靠提亮后的蝴蝶结红做锚点，
+   * 正文用近白而不是纯白，长时间看不刺眼。
+   */
+  'megumi-night': {
+    bg: '#14161f',
+    bgElevated: 'rgba(26, 29, 43, 0.86)',
+    surface: 'rgba(30, 33, 49, 0.8)',
+    surfaceSecondary: 'rgba(22, 25, 37, 0.78)',
+    surfaceRaised: 'rgba(34, 38, 56, 0.92)',
+    surfaceHover: 'rgba(233, 137, 155, 0.1)',
+    surfaceActive: 'rgba(233, 137, 155, 0.16)',
+    fillTertiary: 'rgba(233, 137, 155, 0.12)',
+    navHover: 'rgba(233, 137, 155, 0.08)',
+    navSelected: 'rgba(233, 137, 155, 0.18)',
+    navIcon: '#c99aa4',
+    sidebarBg: 'rgba(22, 25, 37, 0.55)',
+    border: 'rgba(233, 137, 155, 0.18)',
+    borderStrong: 'rgba(233, 137, 155, 0.32)',
+    text: '#ece9f2',
+    textSecondary: '#b3b0c4',
+    textMuted: '#928da3',
+    onAccent: '#20101a',
+    scheme: 'dark',
+    chromeBg: 'rgba(14, 16, 26, 0.92)',
+    chromeFg: '#b3b0c4'
   },
   custom: {
     bg: '#eef4fc',
