@@ -2,7 +2,7 @@ import { execFile } from 'child_process'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
 import { proxyFilePath } from './settings'
 
-const REG_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'
+const REG_PATH = 'Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'
 const BACKUP_FILE = 'system-proxy.json'
 const DEFAULT_BYPASS = '<local>;localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;192.168.*'
 
@@ -23,7 +23,14 @@ interface ProxySnapshot {
  *
  * 这里**不能**用 reg.exe：某些受限环境（企业策略、安全软件、本机沙箱）会把 reg.exe
  * 列入程序黑名单，一旦 spawn 就被拦，轻则代理开关失效，重则整个进程被带走。
- * 改用 PowerShell 的注册表 provider，兼容性更好；进程启动开销靠批量读写摊掉。
+ * 也不能用 `Set-ItemProperty -Type`：`-Type` 是注册表 provider 在绑定阶段补出来的
+ * **动态参数**，补不出来就报 `NamedParameterNotFound: 找不到与参数名称"Type"匹配的参数`
+ * （v0.4.0 起代理开关在整个应用里失效就是这个原因）。统一走 .NET 的 Registry API。
+ *
+ * 调 PowerShell 时两条硬规矩，都是为了绕开 execFile 在 Windows 上的参数转义：
+ * 1. 脚本里**只用单引号**，不要出现双引号。Node 会把内部 `"` 转成 `\"`，
+ *    而 powershell.exe 用自己的命令行解析，两边对不上时脚本会被拼坏。
+ * 2. 结尾不要是反斜杠（会被当成续引号吃掉）。
  */
 function runPowerShell(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -33,7 +40,7 @@ function runPowerShell(script: string): Promise<string> {
       { windowsHide: true, timeout: 12000 },
       (error, stdout, stderr) => {
         if (error) {
-          reject(new Error(stderr?.trim() || error.message))
+          reject(new Error(tidyPowerShellError(stderr) || error.message))
           return
         }
         resolve(stdout)
@@ -42,34 +49,68 @@ function runPowerShell(script: string): Promise<string> {
   })
 }
 
+/** PowerShell 的报错是多行带箭头和 CategoryInfo 的大块，卡片上放不下，压成一行 */
+function tidyPowerShellError(text: string): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  if (lines.length === 0) return ''
+  const message = lines.find((line) => /^[\w.$]+ : /.test(line)) ?? lines[0]
+  const id = lines.find((line) => line.startsWith('FullyQualifiedErrorId'))
+  const detail = id?.split(',').slice(0, 2).join(' ').replace('FullyQualifiedErrorId : ', '')
+  return detail ? `${message}（${detail}）` : message
+}
+
+/**
+ * 每个脚本开头都要加：把控制台输出编码切成 UTF-8。
+ * 不然 PowerShell 报错走的是系统 ANSI 代码页（中文机器上是 GBK），按 utf8 解码
+ * 得到的是一屏乱码，用户根本读不出哪里错了。
+ */
+const PS_UTF8 = '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8'
+
 type RegistryType = 'REG_SZ' | 'REG_DWORD'
 
-/** 批量写，减少 powershell 进程启动次数（每次约 200–300ms） */
+/**
+ * 批量写，减少 powershell 进程启动次数（每次约 200–300ms）。
+ *
+ * 这里走 `Microsoft.Win32.Registry` 而不是 `Set-ItemProperty -Type`：
+ * 后者的 `-Type` 是注册表 provider 的**动态参数**，要由当前会话的 provider
+ * 在绑定时补出来，一旦补不出来（实测在本机应用里）就报
+ * `NamedParameterNotFound: 找不到与参数名称"Type"匹配的参数`，整个开关直接失灵。
+ * .NET API 不吃 provider，任何 PowerShell 版本、任何语言模式都能用。
+ */
 async function writeValues(entries: Array<[string, RegistryType, string]>): Promise<void> {
   if (entries.length === 0) return
   const parts = entries.map(([name, type, value]) => {
-    const psType = type === 'REG_DWORD' ? 'DWord' : 'String'
+    const kind = type === 'REG_DWORD' ? 'DWord' : 'String'
     const psValue = type === 'REG_DWORD' ? value : `'${value.replace(/'/g, "''")}'`
-    return `Set-ItemProperty -Path '${REG_KEY}' -Name '${name}' -Value ${psValue} -Type ${psType}`
+    return `$k.SetValue('${name}', ${psValue}, [Microsoft.Win32.RegistryValueKind]::${kind})`
   })
-  await runPowerShell(['$ErrorActionPreference = "Stop"', ...parts].join('; '))
+  const script = [
+    PS_UTF8,
+    "$ErrorActionPreference = 'Stop'",
+    `$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('${REG_PATH}', $true)`,
+    `if ($null -eq $k) { throw '打不开 Internet Settings 注册表键' }`,
+    ...parts,
+    '$k.Close()'
+  ].join('; ')
+  await runPowerShell(script)
 }
 
 /** 通知系统设置已变更，浏览器等 WinINET 客户端会立刻重读 */
 function broadcastChange(): void {
   if (process.platform !== 'win32') return
+  // C# 的 DllImport 必须带双引号，但脚本里不能出现双引号（见 runPowerShell），用 [char]34 拼出来
   const script = [
-    "$sig = '[DllImport(\"wininet.dll\", SetLastError=true)] public static extern bool InternetSetOption(IntPtr h, int o, IntPtr b, int l);'",
+    '$q = [char]34',
+    "$sig = '[DllImport(' + $q + 'wininet.dll' + $q + ', SetLastError=true)] public static extern bool InternetSetOption(IntPtr h, int o, IntPtr b, int l);'",
     '$t = Add-Type -MemberDefinition $sig -Name WbInternet -Namespace Wb -PassThru',
     '$t::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null',
     '$t::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null'
   ].join('; ')
-  execFile(
-    'powershell',
-    ['-NoProfile', '-NonInteractive', '-Command', script],
-    { windowsHide: true },
-    () => {}
-  )
+  // 部分受限环境禁用 Add-Type；通知失败不影响已写好的设置，浏览器下次取配置照样能读到
+  void runPowerShell(script).catch(() => {})
 }
 
 export function isSupported(): boolean {
@@ -79,8 +120,9 @@ export function isSupported(): boolean {
 async function readRaw(): Promise<ProxySnapshot> {
   // 一次读完三个值；键不存在时全部按"未设置"处理
   const script = [
-    `$k = Get-ItemProperty -Path '${REG_KEY}' -ErrorAction SilentlyContinue`,
-    `if ($null -eq $k) { '||' } else { '{0}|{1}|{2}' -f ([string]$k.ProxyEnable), ([string]$k.ProxyServer), ([string]$k.ProxyOverride) }`
+    PS_UTF8,
+    `$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('${REG_PATH}')`,
+    `if ($null -eq $k) { '||' } else { '{0}|{1}|{2}' -f ([string]$k.GetValue('ProxyEnable', 0)), ([string]$k.GetValue('ProxyServer', '')), ([string]$k.GetValue('ProxyOverride', '')) }`
   ].join('; ')
   let out = ''
   try {
@@ -90,7 +132,7 @@ async function readRaw(): Promise<ProxySnapshot> {
   }
   const [rawEnable = '', server = '', override = ''] = out.split('|')
   return {
-    // PowerShell 里 REG_DWORD 取出来是 1 / 0
+    // REG_DWORD 取出来是 1 / 0
     enabled: rawEnable.trim() === '1',
     server: server.trim(),
     override: override.trim()

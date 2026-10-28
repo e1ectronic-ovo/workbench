@@ -133,6 +133,16 @@ export class ProxyService {
     await systemProxy.recoverOnStart().catch(() => {})
     this.systemProxyOn = false
 
+    // 上次没走优雅退出时，系统代理可能还指着本应用的端口，但内存里已经不知道了。
+    // 认出这种情况就直接认领，免得界面显示「未接管」而系统其实一直在走代理。
+    if (profileStore.activeText() && this.coreReady()) {
+      const state = await systemProxy.currentState().catch(() => null)
+      if (state?.enabled && state.server === `127.0.0.1:${this.settings.mixedPort}`) {
+        this.systemProxyOn = true
+        this.proxyRequested = true
+      }
+    }
+
     this.core.onExit = () => {
       if (!this.desiredRunning) return
       this.handleUnexpectedExit()
