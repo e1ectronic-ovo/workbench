@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { execFile } from 'child_process'
 import { copyFileSync, existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { createServer } from 'net'
@@ -60,6 +61,38 @@ function portAvailable(port: number): Promise<boolean> {
   })
 }
 
+function execText(file: string, args: string[], timeout = 12000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { windowsHide: true, timeout }, (error, stdout) => {
+      if (error) reject(error)
+      else resolve(stdout)
+    })
+  })
+}
+
+/**
+ * 谁是端口的监听方。
+ * 优先按绑定地址精确匹配，匹配不到再看端口是否出现在任意本地地址上。
+ */
+function parseListenerPid(output: string, port: number): number | null {
+  let fallback: number | null = null
+  for (const raw of output.split(/\r?\n/)) {
+    const cols = raw.trim().split(/\s+/)
+    // TCP <local> <remote> LISTENING <pid>
+    if (cols.length < 5) continue
+    if (cols[0].toUpperCase() !== 'TCP') continue
+    if (cols[3].toUpperCase() !== 'LISTENING') continue
+    const local = cols[1]
+    const pid = Number(cols[4])
+    if (!Number.isFinite(pid) || pid <= 0) continue
+    if (local.endsWith(`:${port}`)) {
+      if (local.startsWith('127.0.0.1:')) return pid
+      if (fallback === null) fallback = pid
+    }
+  }
+  return fallback
+}
+
 export class ProxyService {
   private settings: ProxySettings = readSettings()
   private status: ProxySnapshot['status'] = 'stopped'
@@ -80,6 +113,12 @@ export class ProxyService {
   private desiredRunning = false
   private crashCount = 0
   private startedAt = 0
+  /**
+   * 每次 start 递增。用于作废"上一轮启动流程"的收尾动作：
+   * 重启/停止会在旧的 start 还停在 waitHealthy 时发生，旧流程随后报的错
+   * 不能把新内核的状态盖成 error，也不能顺手把它 kill 掉。
+   */
+  private startToken = 0
   private systemProxyOn = false
   /** 最近一次启动时是否要求接管系统代理，崩溃重启时据此恢复 */
   private proxyRequested = false
@@ -154,6 +193,69 @@ export class ProxyService {
 
   // ── 生命周期 ──
 
+  /** 端口当前被哪个进程监听（查不到返回 null） */
+  private async portListener(port: number): Promise<number | null> {
+    try {
+      const out = await execText('netstat', ['-ano', '-p', 'TCP'], 6000)
+      return parseListenerPid(out, port)
+    } catch {
+      return null
+    }
+  }
+
+  private async pidImagePath(pid: number): Promise<string> {
+    try {
+      const script =
+        `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction SilentlyContinue; ` +
+        'if ($p) { [string]$p.ExecutablePath }'
+      const out = await execText(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-Command', script],
+        8000
+      )
+      return out.trim()
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * 清理上一次运行残留的内核进程。
+   *
+   * 应用被强杀、崩溃或 Windows 直接关机时，mihomo 子进程会活下来继续占着
+   * 代理端口；下次启动就会撞上「端口被占用」，而界面上没有任何自救手段。
+   * 这里只收拾「可执行文件正是本应用内置内核」的进程，其他客户端（FLClash、
+   * Clash Verge 等）一律不碰。
+   */
+  private async reclaimOrphanCore(): Promise<boolean> {
+    if (process.platform !== 'win32') return false
+    // 自己拉起来的那个由 stop() 负责
+    if (this.core.isRunning()) return false
+    const ours = this.corePath().toLowerCase()
+    let killed = false
+
+    for (const port of [this.settings.mixedPort, this.settings.controllerPort]) {
+      const pid = await this.portListener(port)
+      if (!pid || pid === process.pid) continue
+      const image = (await this.pidImagePath(pid)).toLowerCase()
+      if (!image || image !== ours) continue
+      try {
+        await new Promise<void>((resolve) => {
+          execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () =>
+            resolve()
+          )
+        })
+        killed = true
+      } catch {
+        /* 权限不足等情况交给后面的启动失败信息 */
+      }
+    }
+
+    // 端口释放有延迟，等一下再继续
+    if (killed) await new Promise((resolve) => setTimeout(resolve, 400))
+    return killed
+  }
+
   /**
    * 拉起内核。systemProxy 决定这次要不要顺手接管系统代理：
    * - 界面点「连接」→ true
@@ -175,6 +277,7 @@ export class ProxyService {
     this.error = null
     this.proxyRequested = wantProxy
     const settings = this.settings
+    const token = ++this.startToken
 
     if (!this.coreReady()) {
       return this.fail('未找到代理内核。把 mihomo 可执行文件放到内核目录，或在设置里指定路径。')
@@ -188,10 +291,16 @@ export class ProxyService {
     this.emit()
 
     try {
-      const free = await portAvailable(settings.mixedPort)
+      let free = await portAvailable(settings.mixedPort)
+      // 端口被别人占着：先看看是不是本应用上次残留的内核，是就清掉再试
+      if (!free && (await this.reclaimOrphanCore())) {
+        if (token !== this.startToken) return { ok: false, error: '启动已被新的操作接管' }
+        free = await portAvailable(settings.mixedPort)
+      }
       if (!free) {
         throw new Error(
-          `代理端口 ${settings.mixedPort} 已被占用，可能是 FLClash / Clash Verge 正在运行。关掉它们或改端口后重试。`
+          `代理端口 ${settings.mixedPort} 已被占用。如果不是本应用残留的进程，` +
+            '可能是 FLClash / Clash Verge 正在运行，关掉它们或改端口后重试。'
         )
       }
 
@@ -206,6 +315,7 @@ export class ProxyService {
 
       const client = new MihomoClient(settings.controllerPort, settings.secret)
       await this.waitHealthy(client)
+      if (token !== this.startToken) return { ok: false, error: '启动已被新的操作接管' }
 
       this.client = client
       this.status = 'running'
@@ -234,6 +344,8 @@ export class ProxyService {
       this.emit()
       return { ok: true }
     } catch (e) {
+      // 这一轮启动已经被停止/重启接管，别去改新一轮的状态，更别把新内核杀掉
+      if (token !== this.startToken) return { ok: false, error: '启动已被新的操作接管' }
       const detail = this.core.lastLogLine()
       await this.core.stop().catch(() => {})
       this.client = null
@@ -246,6 +358,8 @@ export class ProxyService {
   }
 
   async stop(): Promise<ProxyActionResult> {
+    // 作废还在路上的启动流程
+    this.startToken++
     this.desiredRunning = false
     this.stopPolling()
 
@@ -266,13 +380,30 @@ export class ProxyService {
     return { ok: true }
   }
 
+  /**
+   * 重启内核：卡死、端口被残留进程占着、系统代理被别的软件改回去时，
+   * 这是界面上唯一的自救入口，所以每一步都尽量自愈而不是直接报错。
+   */
   async restart(): Promise<ProxyActionResult> {
+    // 重启要延续「用户希望系统流量走代理」的意图。不能只看 settings：
+    // 卡片开关关掉系统代理也会写 settings=false，但那种情况下用户并不会来自救。
+    const wantProxy = this.systemProxyOn || this.proxyRequested || this.settings.systemProxy
+
     await this.stop()
-    return this.start()
+    const result = await this.start({ systemProxy: wantProxy })
+    if (result.ok) return result
+
+    // 起不来时再清一次残留进程重试：端口刚刚被旧进程释放的情况很常见
+    if (await this.reclaimOrphanCore()) {
+      const retry = await this.start({ systemProxy: wantProxy })
+      if (retry.ok) return retry
+    }
+    return result
   }
 
   /** app 退出路径：还原系统代理、结束子进程 */
   async shutdown(): Promise<void> {
+    this.startToken++
     this.desiredRunning = false
     this.stopPolling()
     if (this.systemProxyOn) await this.applySystemProxy(false).catch(() => {})

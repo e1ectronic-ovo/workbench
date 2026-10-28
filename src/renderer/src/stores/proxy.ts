@@ -83,6 +83,28 @@ export const useProxyStore = defineStore('proxy', () => {
     }
   }
 
+  /** 重启内核：卡住时的自救入口，成功后按原来的意图恢复系统代理 */
+  async function restart(): Promise<boolean> {
+    const proxy = api()
+    if (!proxy || busy.value) return false
+    busy.value = true
+    try {
+      const result = await proxy.restart()
+      if (!result.ok) {
+        if (result.error) flash(result.error, 'error')
+        return false
+      }
+      await loadGroups()
+      return true
+    } catch (e) {
+      flash(e instanceof Error ? e.message : '重启失败', 'error')
+      return false
+    } finally {
+      busy.value = false
+      await refresh()
+    }
+  }
+
   /** 只拉起内核，不接管系统代理：打开节点列表 / 测速前调用 */
   async function ensureCore(): Promise<boolean> {
     const proxy = api()
@@ -309,6 +331,7 @@ export const useProxyStore = defineStore('proxy', () => {
     refresh,
     loadGroups,
     toggleProxy,
+    restart,
     ensureCore,
     testGroup,
     applyTestProgress,

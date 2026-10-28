@@ -5,6 +5,21 @@
       <span class="px-title">网络代理</span>
       <span class="px-status">{{ proxy.statusText }}</span>
       <button
+        v-if="canRestart"
+        type="button"
+        class="px-restart"
+        :class="{ 'is-spinning': restarting }"
+        :disabled="restarting || proxy.busy"
+        :title="restarting ? '正在重启内核…' : '重启内核'"
+        aria-label="重启内核"
+        @click="onRestart"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v6h-6" />
+        </svg>
+      </button>
+      <button
         type="button"
         class="px-switch"
         role="switch"
@@ -18,6 +33,9 @@
         <span class="px-switch__knob" aria-hidden="true"></span>
       </button>
     </header>
+
+    <!-- 失败原因与操作反馈：之前只写进状态，卡片上完全看不到 -->
+    <p v-if="alertText" class="px-alert" :class="`is-${alertKind}`">{{ alertText }}</p>
 
     <!-- 内核缺失（安装包不完整时才会出现） -->
     <div v-if="snapshot && !snapshot.coreReady" class="px-empty">
@@ -287,6 +305,7 @@ const subscribeUrl = ref('')
 const subscribeName = ref('')
 const subscribeError = ref('')
 const slowStart = ref(false)
+const restarting = ref(false)
 const profileOpen = ref(false)
 
 const modes: { id: ProxyMode; label: string }[] = [
@@ -301,6 +320,27 @@ const canToggle = computed(() => {
   if (s.status === 'starting') return false
   return s.coreReady && !!s.activeProfileId
 })
+
+/** 只要内核和配置都在就给重启入口：卡在异常/启动中时它才是唯一的自救手段 */
+const canRestart = computed(() => {
+  const s = snapshot.value
+  if (!s) return false
+  return s.coreReady && !!s.activeProfileId
+})
+
+const alertText = computed(() => proxy.notice || snapshot.value?.error || '')
+const alertKind = computed(() => (proxy.notice ? proxy.noticeKind : 'error'))
+
+async function onRestart(): Promise<void> {
+  if (restarting.value) return
+  restarting.value = true
+  try {
+    const ok = await proxy.restart()
+    if (ok) proxy.flash('内核已重启')
+  } finally {
+    restarting.value = false
+  }
+}
 
 const dotTone = computed(() => {
   const s = snapshot.value
@@ -627,6 +667,63 @@ onBeforeUnmount(() => {
   align-items: center;
   flex-shrink: 0;
   transition: background var(--dur) var(--ease);
+}
+
+/* 重启内核：只在头部露一个小图标，不抢开关的注意力 */
+.px-restart {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+
+.px-restart:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.px-restart:disabled {
+  opacity: 0.45;
+}
+
+.px-restart svg {
+  width: 13px;
+  height: 13px;
+}
+
+.px-restart.is-spinning {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.px-restart.is-spinning svg {
+  animation: px-spin 0.9s linear infinite;
+}
+
+@keyframes px-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 失败原因 / 操作反馈 */
+.px-alert {
+  margin: -4px 0 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  word-break: break-word;
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+}
+
+.px-alert.is-ok {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
 }
 
 .px-switch.is-on {
