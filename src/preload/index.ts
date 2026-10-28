@@ -194,6 +194,11 @@ const api = {
       ipcRenderer.on('update:changed', listener)
       return () => ipcRenderer.removeListener('update:changed', listener)
     }
+  },
+
+  /** 仅开发态可用：主进程恢复窗口后截一张 PNG（base64），用于自动化验收界面 */
+  devtools: {
+    capture: () => ipcRenderer.invoke('devtools:capture') as Promise<string | null>
   }
 }
 

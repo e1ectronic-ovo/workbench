@@ -52,7 +52,68 @@ function adoptLegacyUserData(): void {
   }
 }
 
+/**
+ * 开发态用项目内的独立数据目录。
+ *
+ * 两个理由：
+ *   1. 装上正式版之后，两者会抢同一个 userData 的单实例锁，谁先开另一个就起不来，
+ *      开发时来回切换极其难受；
+ *   2. 调试改主题 / 改模块不该把真实配置写坏，脏数据也不该回流到日常使用的那份。
+ *
+ * 目录跟 `.runtime/` 一起被 .gitignore 忽略，删掉即重置（主题、模块全回初始状态）。
+ */
+function useDevUserData(): void {
+  if (app.isPackaged) return
+  const dir = join(app.getAppPath(), '.runtime', 'userdata-dev')
+  try {
+    mkdirSync(dir, { recursive: true })
+    app.setPath('userData', dir)
+    console.log('[whaletide] 开发态数据目录', dir)
+  } catch (err) {
+    console.warn('[whaletide] 开发态数据目录创建失败，退回默认目录', err)
+  }
+}
+
+/**
+ * 开发态截图通道：先把窗口恢复再抓图。
+ *
+ * 窗口一旦被最小化，Chromium 的合成器就停止产帧，CDP 的 Page.captureScreenshot
+ * 会一直等到超时。capturePage 同样要求窗口可见，所以这里先 restore + show。
+ * 只在未打包时挂载，打包版本没有这段。
+ */
+function registerDevCapture(): void {
+  if (app.isPackaged) return
+  ipcMain.handle('devtools:capture', async () => {
+    const win = mainWindow
+    if (!win || win.isDestroyed()) return null
+    if (win.isMinimized()) win.restore()
+    if (!win.isVisible()) win.show()
+    win.focus()
+    await new Promise((resolve) => setTimeout(resolve, 320))
+    const image = await win.webContents.capturePage()
+    return image.toPNG().toString('base64')
+  })
+}
+
+/**
+ * 开发态按需开放 CDP 调试端口（默认不开）。
+ *
+ * 用途：自动化验证界面 —— 逐主题截图、抓渲染层报错、模拟点击，
+ * 比让人肉眼看一遍可靠。只监听 127.0.0.1，且打包版本不会有这段。
+ *   WHALETIDE_DEVTOOLS_PORT=9222 npm run dev
+ */
+function openDevtoolsPort(): void {
+  if (app.isPackaged) return
+  const port = process.env.WHALETIDE_DEVTOOLS_PORT?.trim()
+  if (!port) return
+  app.commandLine.appendSwitch('remote-debugging-port', port)
+  app.commandLine.appendSwitch('remote-allow-origins', '*')
+  console.log('[whaletide] CDP 调试端口', port)
+}
+
 adoptLegacyUserData()
+useDevUserData()
+openDevtoolsPort()
 
 /**
  * 单实例锁：第二个实例必须让位给已经跑着的那个。
@@ -559,6 +620,7 @@ app.whenReady().then(() => {
   registerIpc()
   registerProxyIpc(proxyService)
   registerUpdateIpc()
+  registerDevCapture()
   createWindow()
 
   setupTray(trayIconPaths(), {

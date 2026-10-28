@@ -110,6 +110,11 @@ export interface WorkbenchAPI {
    * 安卓模拟器接口曾经挂在这里（2026-10 移除）。整套方案要带上十几 G 的 SDK/AVD
    * 和 4G 常驻内存，为此还在主进程里跑 scrcpy + WebCodecs 解码，收益不成立，已整体删除。
    */
+
+  /** 仅开发态存在：主进程恢复窗口后截图，用于自动化验收界面 */
+  devtools?: {
+    capture: () => Promise<string | null>
+  }
 }
 
 declare global {
