@@ -19,65 +19,7 @@ export type WorkbenchPlatform =
   | 'sunos'
   | string
 
-export interface AndroidWindowInfo {
-  handle: string
-  processId: number
-  processName: string
-  title: string
-  className: string
-  display: string
-}
-
-export interface AndroidMountPayload {
-  processName: string
-  title?: string
-  className?: string
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-export interface AndroidLaunchPayload extends AndroidMountPayload {
-  executablePath: string
-  arguments?: string
-}
-
-export interface AndroidStatus {
-  embedded: boolean
-  processName: string
-  title: string
-  className: string
-  handle: string
-}
-
-/** 内置 Android 引擎的状态。运行时由客户端自己准备，用户不需要装模拟器或 SDK。 */
-export interface AndroidEngineStatus {
-  installed: boolean
-  avdReady: boolean
-  state: 'notinstalled' | 'stopped' | 'starting' | 'running' | 'stopping'
-  serial: string
-  root: string
-  image: string
-  lastError: string
-  /** 引擎窗口所属进程（qemu-system-x86_64），模块绑定时用它 */
-  windowProcess: string
-  /** 按宿主硬件算出来的资源分配，用于在设置页说明「为什么这么配」 */
-  hardware?: {
-    cpuCores: number
-    ramMegabytes: number
-    gpuMode: string
-    /** 实际生效的 CPU 虚拟化后端：aehd 优于 whpx */
-    accelerator: string
-  }
-}
-
-export interface AndroidAppsResult {
-  packages: string[]
-  windowProcess: string
-}
-
-/** 当前承载外壳：electron 是原版 Electron 壳，wpf 是 WebView2 + 原生窗口托管壳。 */
+/** 当前承载外壳。安卓能力已完全跑在 Electron 主进程里，这个字段只保留给旧数据兼容。 */
 export type WorkbenchShell = 'electron' | 'wpf'
 
 /** 外壳实现：决定网页模块用 <webview> 还是 <iframe> 渲染。 */
@@ -165,33 +107,9 @@ export interface WorkbenchAPI {
   }
 
   /**
-   * 原生窗口托管能力。只有 WPF 外壳（WebView2 + HwndHost）提供；
-   * Electron 外壳没有可用的原生窗口托管通道，因此这里必须是可选的。
+   * 安卓模拟器接口曾经挂在这里（2026-10 移除）。整套方案要带上十几 G 的 SDK/AVD
+   * 和 4G 常驻内存，为此还在主进程里跑 scrcpy + WebCodecs 解码，收益不成立，已整体删除。
    */
-  android?: {
-    /** 取消选择时返回 null。 */
-    pickWindow: () => Promise<AndroidWindowInfo | null>
-    mount: (payload: AndroidMountPayload) => Promise<AndroidStatus>
-    launch: (payload: AndroidLaunchPayload) => Promise<AndroidStatus>
-    updateBounds: (payload: Pick<AndroidMountPayload, 'x' | 'y' | 'width' | 'height'>) => Promise<AndroidStatus>
-    deactivate: () => Promise<AndroidStatus>
-    detach: () => Promise<AndroidStatus>
-    status: () => Promise<AndroidStatus>
-    onStatus: (cb: (status: AndroidStatus) => void) => () => void
-
-    engineStatus: () => Promise<AndroidEngineStatus>
-    prepare: () => Promise<AndroidEngineStatus>
-    startEngine: () => Promise<AndroidEngineStatus>
-    stopEngine: () => Promise<AndroidEngineStatus>
-    pickApk: () => Promise<string | null>
-    installApk: (path: string) => Promise<{ ok: boolean; output: string; packages: string[] }>
-    listApps: () => Promise<AndroidAppsResult>
-    launchApp: (
-      packageName: string
-    ) => Promise<{ ok: boolean; packageName: string; windowProcess: string }>
-    uninstallApp: (packageName: string) => Promise<{ ok: boolean; packageName: string }>
-    onProgress: (cb: (payload: { message: string }) => void) => () => void
-  }
 }
 
 declare global {

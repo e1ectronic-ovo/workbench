@@ -21,18 +21,9 @@
       <!-- 网站 -->
       <div v-if="tab === 'modules'" class="tab-pane">
         <div class="pane-toolbar">
-          <p class="pane-hint">侧栏显示的模块：网站走内嵌浏览器，原生应用则直接把模拟器或本地程序的窗口托管进界面。</p>
+          <p class="pane-hint">侧栏显示的模块：每个模块用一个内嵌浏览器打开一个站点。</p>
           <div class="pane-actions">
-            <button
-              class="mac-btn mac-btn--secondary"
-              type="button"
-              :disabled="!nativeSupported"
-              :title="nativeSupported ? '把模拟器或本地程序的窗口嵌进模块区' : '当前外壳不支持原生窗口嵌入，请用 WPF 外壳启动'"
-              @click="openCreate('native')"
-            >
-              接入原生窗口
-            </button>
-            <button class="mac-btn mac-btn--primary" type="button" @click="openCreate('web')">添加网站</button>
+            <button class="mac-btn mac-btn--primary" type="button" @click="openCreate">添加网站</button>
           </div>
         </div>
 
@@ -72,120 +63,6 @@
             还没有网站。点击「添加网站」开始配置。
           </div>
         </div>
-      </div>
-
-      <!-- 外观 -->
-      <!-- 安卓 -->
-      <div v-else-if="tab === 'android'" class="tab-pane">
-        <div class="pane-toolbar">
-          <p class="pane-hint">
-            客户端自带 Android 运行时。装完鲸汐就能直接装 APK，不需要另外装模拟器或 Android SDK。
-          </p>
-          <div class="pane-actions">
-            <button class="mac-btn mac-btn--secondary" type="button" :disabled="engineBusy" @click="refreshEngine">
-              刷新
-            </button>
-          </div>
-        </div>
-
-        <section class="mac-group">
-          <div class="mac-row">
-            <div class="mac-row__main">
-              <div class="mac-row__text">
-                <div class="mac-row__title">Android 引擎</div>
-                <div class="mac-row__sub" :title="engine?.root || ''">{{ engineSummary }}</div>
-                <div v-if="hardwareSummary" class="mac-row__sub android-hardware">{{ hardwareSummary }}</div>
-              </div>
-            </div>
-            <div class="mac-row__actions">
-              <button
-                v-if="!engine?.installed"
-                class="mac-btn mac-btn--primary"
-                type="button"
-                :disabled="engineBusy"
-                @click="prepareRuntime"
-              >
-                {{ engineBusy ? '准备中…' : '准备运行时' }}
-              </button>
-              <template v-else>
-                <button
-                  v-if="engine.state !== 'running'"
-                  class="mac-btn mac-btn--primary"
-                  type="button"
-                  :disabled="engineBusy"
-                  @click="startEngine"
-                >
-                  {{ engineBusy ? '启动中…' : '启动引擎' }}
-                </button>
-                <button
-                  v-else
-                  class="mac-btn mac-btn--ghost"
-                  type="button"
-                  :disabled="engineBusy"
-                  @click="stopEngine"
-                >
-                  停止引擎
-                </button>
-              </template>
-            </div>
-          </div>
-        </section>
-
-        <p v-if="engineProgress" class="android-progress">{{ engineProgress }}</p>
-        <p v-if="androidError" class="warn">{{ androidError }}</p>
-
-        <section class="mac-group android-install">
-          <div class="mac-row">
-            <div class="mac-row__main">
-              <div class="mac-row__text">
-                <div class="mac-row__title">安装 APK</div>
-                <div class="mac-row__sub">选一个 .apk 装进引擎；首次会自动准备好运行时并开机</div>
-              </div>
-            </div>
-            <div class="mac-row__actions">
-              <button
-                class="mac-btn mac-btn--primary"
-                type="button"
-                :disabled="engineBusy || installing"
-                @click="installApk"
-              >
-                {{ installing ? '安装中…' : '选择 APK 安装' }}
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <div class="pane-toolbar android-apps-head">
-          <p class="pane-hint">已安装的第三方应用</p>
-          <div class="pane-actions">
-            <button class="mac-btn mac-btn--secondary" type="button" :disabled="appsBusy" @click="refreshApps">
-              {{ appsBusy ? '读取中…' : '刷新列表' }}
-            </button>
-          </div>
-        </div>
-
-        <div v-if="apps.length" class="mac-group" role="list">
-          <div v-for="pkg in apps" :key="pkg" class="mac-row" role="listitem">
-            <div class="mac-row__main">
-              <div class="mac-row__text">
-                <div class="mac-row__title">{{ pkg }}</div>
-                <div class="mac-row__sub">已安装 · 包名</div>
-              </div>
-            </div>
-            <div class="mac-row__actions">
-              <button class="mac-btn mac-btn--secondary" type="button" :disabled="engineBusy" @click="openApp(pkg)">
-                打开
-              </button>
-              <button class="mac-btn mac-btn--secondary" type="button" @click="bindAsModule(pkg)">
-                添加为模块
-              </button>
-              <button class="mac-btn mac-btn--ghost" type="button" @click="uninstallApp(pkg)">卸载</button>
-            </div>
-          </div>
-        </div>
-        <p v-else class="pane-hint android-empty">
-          还没有安装任何应用。装一个 APK 之后，这里会出现「打开」和「添加为模块」。
-        </p>
       </div>
 
       <div v-else-if="tab === 'appearance'" class="tab-pane">
@@ -550,106 +427,17 @@
     <!-- 编辑 / 新建网站 -->
     <div v-if="dialogOpen" class="mac-sheet-backdrop" @click.self="closeDialog">
       <form class="mac-sheet" @submit.prevent="onSave">
-        <h2 class="mac-sheet__title">
-          {{ editingId ? '编辑模块' : form.kind === 'native' ? '接入原生窗口' : '添加网站' }}
-        </h2>
-
-        <div class="mac-field">
-          <span>类型</span>
-          <div class="kind-switch">
-            <button
-              type="button"
-              class="mac-btn"
-              :class="form.kind === 'web' ? 'mac-btn--primary' : 'mac-btn--ghost'"
-              @click="setKind('web')"
-            >
-              网站
-            </button>
-            <button
-              type="button"
-              class="mac-btn"
-              :class="form.kind === 'native' ? 'mac-btn--primary' : 'mac-btn--ghost'"
-              :disabled="!nativeSupported"
-              :title="nativeSupported ? '' : '当前外壳不支持原生窗口嵌入'"
-              @click="setKind('native')"
-            >
-              原生应用
-            </button>
-          </div>
-        </div>
+        <h2 class="mac-sheet__title">{{ editingId ? '编辑模块' : '添加网站' }}</h2>
 
         <label class="mac-field">
           <span>名称</span>
           <input v-model="form.name" required maxlength="32" placeholder="例如：小红书" />
         </label>
 
-        <label v-if="form.kind === 'web'" class="mac-field">
+        <label class="mac-field">
           <span>网址</span>
           <input v-model="form.url" required placeholder="https://example.com" spellcheck="false" />
         </label>
-
-        <template v-else>
-          <div v-if="form.mode === 'android'" class="mac-field">
-            <span>绑定的安卓应用</span>
-            <div class="android-binding">{{ form.androidPackage || '（未绑定）' }}</div>
-            <p class="field-hint">
-              这个模块由客户端自带的 Android 引擎运行，窗口由引擎提供。换应用请到「安卓」面板重新添加。
-            </p>
-          </div>
-
-          <div v-if="form.mode === 'window'" class="mac-field">
-            <span>目标进程</span>
-            <div class="field-row">
-              <input
-                v-model="form.processName"
-                placeholder="例如 MuMuPlayer（不带 .exe）"
-                spellcheck="false"
-              />
-              <button
-                class="mac-btn mac-btn--secondary"
-                type="button"
-                :disabled="picking || !nativeSupported"
-                @click="pickNativeWindow"
-              >
-                {{ picking ? '选择中…' : '选择窗口' }}
-              </button>
-            </div>
-          </div>
-
-          <template v-if="form.mode === 'window'">
-          <label class="mac-field">
-            <span>可执行文件（可选，用于自动启动）</span>
-            <input
-              v-model="form.executablePath"
-              placeholder="D:\…\MuMuPlayer.exe；留空则只嵌入已启动的窗口"
-              spellcheck="false"
-            />
-          </label>
-
-          <button type="button" class="field-toggle" @click="showNativeAdvanced = !showNativeAdvanced">
-            {{ showNativeAdvanced ? '收起高级匹配' : '高级匹配（多窗口时用）' }}
-          </button>
-
-          <template v-if="showNativeAdvanced">
-            <label class="mac-field">
-              <span>窗口标题包含</span>
-              <input v-model="form.windowTitle" placeholder="留空则不按标题过滤" spellcheck="false" />
-            </label>
-            <label class="mac-field">
-              <span>窗口类名</span>
-              <input v-model="form.className" placeholder="留空则不按类名过滤" spellcheck="false" />
-            </label>
-            <label class="mac-field">
-              <span>启动参数</span>
-              <input v-model="form.arguments" placeholder="传给可执行文件的命令行参数" spellcheck="false" />
-            </label>
-            <label class="check-row">
-              <input v-model="form.launchOnOpen" type="checkbox" />
-              <span>进入这个模块时自动启动并嵌入</span>
-            </label>
-          </template>
-          </template>
-        </template>
 
         <label class="mac-field color-field">
           <span>颜色</span>
@@ -737,7 +525,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { CLOSE_ACTION_LABELS, type CloseAction } from '../../../common/window'
-import { PRESET_COLORS, moduleSubtitle, type ModuleConfig, type ModuleKind } from '../modules/registry'
+import { PRESET_COLORS, moduleSubtitle, type ModuleConfig } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
 import { useProxyStore } from '../stores/proxy'
 import { formatSubscriptionRemaining } from '../lib/proxy-format'
@@ -754,7 +542,6 @@ import {
   type ThemeId
 } from '../stores/settings'
 import ModuleIcon from './ModuleIcon.vue'
-import type { AndroidEngineStatus } from '../types/global'
 import maidPreviewDay from '../assets/maid-atelier/preview-day.webp'
 import maidPreviewNight from '../assets/maid-atelier/preview-night.webp'
 import orcaPreviewDay from '../assets/orca-link/light-hero.webp'
@@ -767,7 +554,6 @@ const settings = useSettingsStore()
 
 const tabs = [
   { id: 'modules' as const, label: '网站' },
-  { id: 'android' as const, label: '安卓' },
   { id: 'appearance' as const, label: '外观' },
   { id: 'proxy' as const, label: '代理' },
   { id: 'general' as const, label: '通用' }
@@ -999,192 +785,12 @@ const accentPresets = [
 const dialogOpen = ref(false)
 const editingId = ref<string | null>(null)
 const saving = ref(false)
-const picking = ref(false)
 const formError = ref('')
-const showNativeAdvanced = ref(false)
 const form = reactive({
-  kind: 'web' as ModuleKind,
-  mode: 'window' as 'window' | 'android',
-  androidPackage: '',
   name: '',
   url: '',
-  color: '#14B8A6',
-  processName: '',
-  windowTitle: '',
-  className: '',
-  executablePath: '',
-  arguments: '',
-  launchOnOpen: false
+  color: '#14B8A6'
 })
-
-/** 当前外壳是否提供原生窗口托管；Electron 壳没有。 */
-const nativeSupported = computed(() => !!window.workbench?.android)
-
-/* ── 内置 Android 引擎 ── */
-
-const engine = ref<AndroidEngineStatus | null>(null)
-const engineBusy = ref(false)
-const engineProgress = ref('')
-const installing = ref(false)
-const apps = ref<string[]>([])
-const appsBusy = ref(false)
-const androidError = ref('')
-let offAndroidProgress: (() => void) | undefined
-
-const androidApi = window.workbench?.android
-
-const engineSummary = computed(() => {
-  const e = engine.value
-  if (!e) return '正在读取状态…'
-  if (!e.installed) return '运行时未安装 · 首次准备需要下载约 2GB'
-  if (e.state === 'running') return `运行中 · ${e.serial}`
-  if (e.state === 'starting') return '启动中 · 首次开机需要 1–3 分钟'
-  if (e.state === 'stopping') return '正在停止…'
-  return `已就绪 · ${e.image}`
-})
-
-/** 按宿主硬件分配的资源；AEHD 与 WHPX 的差异直接决定画面顺不顺。 */
-const hardwareSummary = computed(() => {
-  const h = engine.value?.hardware
-  if (!h) return ''
-  const ram = `${(h.ramMegabytes / 1024).toFixed(h.ramMegabytes % 1024 === 0 ? 0 : 1)}GB`
-  const accel = h.accelerator === 'aehd'
-    ? 'AEHD 硬件加速'
-    : h.accelerator === 'whpx'
-      ? 'WHPX（AMD/Intel 兼容层，比 AEHD 慢）'
-      : '未检测到加速'
-  return `${h.cpuCores} 核 · ${ram} · GPU ${h.gpuMode} · ${accel}`
-})
-
-async function refreshEngine() {
-  if (!androidApi) return
-  try {
-    engine.value = await androidApi.engineStatus()
-    if (engine.value.installed && engine.value.state === 'running') {
-      void refreshApps()
-    }
-  } catch (e: any) {
-    androidError.value = e?.message || '读取引擎状态失败'
-  }
-}
-
-async function prepareRuntime() {
-  if (!androidApi || engineBusy.value) return
-  engineBusy.value = true
-  androidError.value = ''
-  engineProgress.value = '准备中…'
-  try {
-    engine.value = await androidApi.prepare()
-    engineProgress.value = '运行时已就绪'
-  } catch (e: any) {
-    androidError.value = e?.message || '准备运行时失败'
-    engineProgress.value = ''
-  } finally {
-    engineBusy.value = false
-  }
-}
-
-async function startEngine() {
-  if (!androidApi || engineBusy.value) return
-  engineBusy.value = true
-  androidError.value = ''
-  try {
-    engine.value = await androidApi.startEngine()
-    await refreshApps()
-  } catch (e: any) {
-    androidError.value = e?.message || '启动引擎失败'
-  } finally {
-    engineBusy.value = false
-    engineProgress.value = ''
-  }
-}
-
-async function stopEngine() {
-  if (!androidApi || engineBusy.value) return
-  engineBusy.value = true
-  androidError.value = ''
-  try {
-    engine.value = await androidApi.stopEngine()
-    apps.value = []
-  } catch (e: any) {
-    androidError.value = e?.message || '停止引擎失败'
-  } finally {
-    engineBusy.value = false
-  }
-}
-
-async function refreshApps() {
-  if (!androidApi || appsBusy.value) return
-  appsBusy.value = true
-  try {
-    const result = await androidApi.listApps()
-    apps.value = result.packages
-    if (engine.value) engine.value.windowProcess = result.windowProcess
-  } catch {
-    apps.value = []
-  } finally {
-    appsBusy.value = false
-  }
-}
-
-async function installApk() {
-  if (!androidApi || installing.value) return
-  installing.value = true
-  androidError.value = ''
-  engineProgress.value = ''
-  try {
-    const picked = await androidApi.pickApk()
-    if (!picked) return
-    const result = await androidApi.installApk(picked)
-    apps.value = result.packages
-    await refreshEngine()
-    engineProgress.value = '安装完成'
-  } catch (e: any) {
-    androidError.value = e?.message || '安装失败'
-  } finally {
-    installing.value = false
-    engineProgress.value = ''
-  }
-}
-
-async function openApp(packageName: string) {
-  if (!androidApi) return
-  androidError.value = ''
-  try {
-    await androidApi.launchApp(packageName)
-    engineProgress.value = `已在引擎中启动 ${packageName}`
-  } catch (e: any) {
-    androidError.value = e?.message || '启动应用失败'
-  }
-}
-
-async function uninstallApp(packageName: string) {
-  if (!androidApi) return
-  androidError.value = ''
-  try {
-    await androidApi.uninstallApp(packageName)
-    apps.value = apps.value.filter((p) => p !== packageName)
-  } catch (e: any) {
-    androidError.value = e?.message || '卸载失败'
-  }
-}
-
-/** 把一个已装的包绑成模块：模块区直接托管引擎窗口并启动这个包。 */
-function bindAsModule(packageName: string) {
-  const shortName = packageName.split('.').filter(Boolean).pop() || packageName
-  const created = modulesStore.addModule({
-    kind: 'native',
-    name: shortName,
-    url: '',
-    color: '#3DDC84',
-    native: {
-      mode: 'android',
-      androidPackage: packageName,
-      processName: engine.value?.windowProcess || 'qemu-system-x86_64'
-    }
-  })
-  engineProgress.value = `已添加模块「${created.name}」`
-}
 
 const pendingRemove = ref<ModuleConfig | null>(null)
 const removing = ref(false)
@@ -1201,18 +807,10 @@ onMounted(async () => {
       updateState.value = state
     })
   }
-
-  if (api?.android) {
-    offAndroidProgress = api.android.onProgress(({ message }) => {
-      engineProgress.value = message
-    })
-    await refreshEngine()
-  }
 })
 
 onBeforeUnmount(() => {
   offUpdate?.()
-  offAndroidProgress?.()
 })
 
 function onThemeSelect(id: ThemeId) {
@@ -1249,26 +847,14 @@ function onDensity(e: Event) {
 }
 
 function resetForm() {
-  form.kind = 'web'
-  form.mode = 'window'
-  form.androidPackage = ''
   form.name = ''
   form.url = 'https://'
   form.color = '#14B8A6'
-  form.processName = ''
-  form.windowTitle = ''
-  form.className = ''
-  form.executablePath = ''
-  form.arguments = ''
-  form.launchOnOpen = false
-  showNativeAdvanced.value = false
 }
 
-function openCreate(kind: ModuleKind = 'web') {
+function openCreate() {
   editingId.value = null
   resetForm()
-  form.kind = kind
-  form.url = kind === 'native' ? '' : 'https://'
   formError.value = ''
   dialogOpen.value = true
 }
@@ -1276,57 +862,11 @@ function openCreate(kind: ModuleKind = 'web') {
 function openEdit(m: ModuleConfig) {
   editingId.value = m.id
   resetForm()
-  form.kind = m.kind === 'native' ? 'native' : 'web'
   form.name = m.name
   form.url = m.url
   form.color = m.color
-  if (m.native) {
-    form.mode = m.native.mode === 'android' ? 'android' : 'window'
-    form.androidPackage = m.native.androidPackage ?? ''
-    form.processName = m.native.processName ?? ''
-    form.windowTitle = m.native.windowTitle ?? ''
-    form.className = m.native.className ?? ''
-    form.executablePath = m.native.executablePath ?? ''
-    form.arguments = m.native.arguments ?? ''
-    form.launchOnOpen = m.native.launchOnOpen === true
-  }
-  showNativeAdvanced.value = !!(m.native?.windowTitle || m.native?.className || m.native?.executablePath || m.native?.arguments)
   formError.value = ''
   dialogOpen.value = true
-}
-
-/** 切换类型时清掉不属于该类型的输入，避免把网址写进原生模块。 */
-function setKind(kind: ModuleKind) {
-  if (form.kind === kind) return
-  form.kind = kind
-  formError.value = ''
-  if (kind === 'native') {
-    if (form.url === 'https://') form.url = ''
-  } else if (!form.url.trim() || form.url.trim() === '') {
-    form.url = 'https://'
-  }
-}
-
-async function pickNativeWindow() {
-  const api = window.workbench?.android
-  if (!api) {
-    formError.value = '当前外壳不支持选择窗口，请手动填写进程名'
-    return
-  }
-
-  picking.value = true
-  formError.value = ''
-  try {
-    const info = await api.pickWindow()
-    if (!info) return
-    form.processName = info.processName
-    form.windowTitle = info.title
-    form.className = info.className
-  } catch (e: any) {
-    formError.value = e?.message || '选择窗口失败'
-  } finally {
-    picking.value = false
-  }
 }
 
 function closeDialog() {
@@ -1335,22 +875,11 @@ function closeDialog() {
 
 async function onSave() {
   formError.value = ''
-  const isNative = form.kind === 'native'
   if (!form.name.trim()) {
     formError.value = '请填写名称'
     return
   }
-  if (isNative) {
-    if (form.mode === 'android') {
-      if (!form.androidPackage.trim()) {
-        formError.value = '这个模块还没有绑定安卓应用，请到「安卓」面板点「添加为模块」'
-        return
-      }
-    } else if (!form.processName.trim()) {
-      formError.value = '请填写目标进程名，或用「选择窗口」自动填入'
-      return
-    }
-  } else if (!form.url.trim()) {
+  if (!form.url.trim()) {
     formError.value = '请填写网址'
     return
   }
@@ -1358,35 +887,18 @@ async function onSave() {
   saving.value = true
   try {
     let id = editingId.value
-    const native = isNative
-      ? {
-          mode: form.mode,
-          androidPackage: form.mode === 'android' ? form.androidPackage.trim() || undefined : undefined,
-          processName: form.processName.trim() || undefined,
-          windowTitle: form.windowTitle.trim() || undefined,
-          className: form.className.trim() || undefined,
-          executablePath: form.executablePath.trim() || undefined,
-          arguments: form.arguments.trim() || undefined,
-          launchOnOpen: form.launchOnOpen
-        }
-      : undefined
-    const url = isNative ? form.url.trim() : form.url
 
     if (id) {
       modulesStore.updateModule(id, {
-        kind: form.kind,
         name: form.name,
-        url,
-        color: form.color,
-        native
+        url: form.url,
+        color: form.color
       })
     } else {
       const created = modulesStore.addModule({
-        kind: form.kind,
         name: form.name,
-        url,
-        color: form.color,
-        native
+        url: form.url,
+        color: form.color
       })
       id = created.id
     }
@@ -1736,17 +1248,6 @@ async function confirmRemove() {
   color: var(--destructive);
 }
 
-/* 模块弹窗：类型切换与原生应用字段 */
-
-.kind-switch {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.kind-switch > .mac-btn {
-  flex: 1 1 0;
-}
-
 .field-row {
   display: flex;
   align-items: center;
@@ -1796,48 +1297,6 @@ async function confirmRemove() {
   accent-color: var(--accent);
 }
 
-/* 安卓面板 */
-
-.android-hardware {
-  margin-top: 2px;
-  font-size: var(--text-xs);
-  color: var(--text-tertiary, var(--text-secondary));
-  opacity: 0.85;
-}
-
-.android-progress {
-  margin: var(--space-2) 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-secondary);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  user-select: text;
-}
-
-.android-apps-head {
-  margin-top: var(--space-5);
-}
-
-.android-install {
-  margin-top: var(--space-3);
-}
-
-.android-empty {
-  margin-top: var(--space-2);
-}
-
-.android-binding {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  font-family: var(--font-mono, monospace);
-  font-size: var(--text-sm);
-  color: var(--text);
-  user-select: text;
-}
 
 .field-hint {
   margin: 0;

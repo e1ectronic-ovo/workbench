@@ -8,13 +8,6 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "npm run typecheck && npm run icons && electron-vite build",
-    "desktop:build": "node scripts/build-desktop.mjs",
-    "desktop:run": "node scripts/build-desktop.mjs --run",
-    "desktop:test": "node scripts/build-desktop.mjs --self-test",
-    "desktop:probe": "node scripts/build-desktop.mjs --probe",
-    "desktop:release": "node scripts/build-desktop.mjs --release",
-    "android:setup": "node scripts/android-runtime.mjs",
-    "android:verify": "node scripts/android-runtime.mjs --verify",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "pack": "node scripts/fetch-core.mjs && npm run build && electron-builder --dir",

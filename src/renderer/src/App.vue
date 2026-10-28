@@ -30,20 +30,13 @@
           -->
           <div v-show="view === 'module'" class="content-fill">
             <div class="workspaces">
-              <template v-for="m in liveModules" :key="m.id">
-                <Workspace
-                  v-if="m.kind !== 'native'"
-                  v-show="m.id === store.activeId"
-                  :module="m"
-                  :active="view === 'module' && m.id === store.activeId"
-                />
-                <NativeWorkspace
-                  v-else
-                  v-show="m.id === store.activeId"
-                  :module="m"
-                  :active="view === 'module' && m.id === store.activeId"
-                />
-              </template>
+              <Workspace
+                v-for="m in liveModules"
+                :key="m.id"
+                v-show="m.id === store.activeId"
+                :module="m"
+                :active="view === 'module' && m.id === store.activeId"
+              />
             </div>
           </div>
 
@@ -63,7 +56,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import Workspace from './components/Workspace.vue'
-import NativeWorkspace from './components/NativeWorkspace.vue'
 import StatusBar from './components/StatusBar.vue'
 import HomeDashboard from './components/HomeDashboard.vue'
 import Settings from './components/Settings.vue'

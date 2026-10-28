@@ -1,29 +1,18 @@
-export type ModuleKind = 'web' | 'native'
+export type ModuleKind = 'web'
 
-export interface NativeAppConfig {
-  /**
-   * window：绑定一个已经在跑的进程窗口（模拟器、播放器都行）
-   * android：用客户端内置的 Android 引擎跑某个包，窗口由引擎自己提供
-   */
-  mode?: 'window' | 'android'
-  /** mode=window 时：目标窗口所属进程名，例如 MuMuPlayer.exe 对应的 MuMuPlayer。 */
-  processName?: string
-  /** mode=android 时：要在内置引擎里启动的应用包名。 */
-  androidPackage?: string
-  /** 可选的窗口标题 / 类名，用于同一进程有多个窗口时精确定位。 */
-  windowTitle?: string
-  className?: string
-  /** 可选：由鲸汐启动的模拟器或应用可执行文件。 */
-  executablePath?: string
-  arguments?: string
-  /** 进入模块时若窗口不存在，是否自动启动。 */
-  launchOnOpen?: boolean
-}
-
+/**
+ * 侧栏模块：一个模块就是一个站点，用内嵌浏览器打开。
+ *
+ * 曾经还有 kind === 'native'（把模拟器或本地程序的窗口嵌进模块区），
+ * 那条路先后试过窗口句柄托管和内置安卓引擎，前者交互差、后者一个模拟器
+ * 就要吃掉十几 G 磁盘和 4G 内存，性价比不成立，已经整体移除。
+ *
+ * kind 字段留着只为识别历史数据：读到 'native' 的旧模块会在加载时被丢弃。
+ */
 export interface ModuleConfig {
   id: string
   name: string
-  /** 旧配置没有该字段时按普通网站处理。 */
+  /** 历史字段，现在只可能是 'web'。 */
   kind?: ModuleKind
   url: string
   /** 无文字作后备图标（无 icon 文件时） */
@@ -34,8 +23,6 @@ export interface ModuleConfig {
   color: string
   /** 排序，越小越靠上 */
   order?: number
-  /** kind === 'native' 时描述要嵌入的原生窗口。 */
-  native?: NativeAppConfig
 }
 
 /**
@@ -78,18 +65,6 @@ export function moduleLabel(m: ModuleConfig): string {
   return m.glyph?.trim() || m.name.trim().slice(0, 1) || '?'
 }
 
-export function isNativeModule(m: ModuleConfig): boolean {
-  return m.kind === 'native'
-}
-
 export function moduleSubtitle(m: ModuleConfig): string {
-  if (isNativeModule(m)) {
-    if (m.native?.mode === 'android') {
-      const pkg = m.native.androidPackage?.trim()
-      return pkg ? `安卓应用 · ${pkg}` : '安卓应用 · 尚未选择包'
-    }
-    const processName = m.native?.processName?.trim()
-    return processName ? `原生应用 · ${processName}` : '原生应用 · 尚未绑定窗口'
-  }
   return m.url
 }

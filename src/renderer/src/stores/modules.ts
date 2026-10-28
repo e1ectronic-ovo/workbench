@@ -21,7 +21,7 @@ export interface ModuleState {
 const MODULES_KEY = 'workbench.modules'
 const STATE_KEY = 'workbench.module-state'
 const MODULE_SEED_KEY = 'workbench.module-seed'
-const MODULE_SEED = 3
+const MODULE_SEED = 4
 
 function applyModuleSeeds(list: ModuleConfig[]): { list: ModuleConfig[]; changed: boolean } {
   const applied = Number(localStorage.getItem(MODULE_SEED_KEY) || '1')
@@ -37,28 +37,24 @@ function applyModuleSeeds(list: ModuleConfig[]): { list: ModuleConfig[]; changed
     }
   }
 
+  // seed 4：安卓模拟器入口曾经作为内置模块出现，功能已整体移除。
+  // 残留的 native 模块由 isValidModule 直接拦掉，这里不需要额外动作。
+
   return { list: sortModules(next), changed }
 }
 
 function isValidModule(m: unknown): m is ModuleConfig {
   if (!m || typeof m !== 'object') return false
   const x = m as Record<string, unknown>
-  const native = x.native
   return (
     typeof x.id === 'string' &&
     typeof x.name === 'string' &&
     typeof x.url === 'string' &&
     typeof x.color === 'string' &&
-    (x.kind === undefined || x.kind === 'web' || x.kind === 'native') &&
+    // kind 只能是 'web'；历史数据里的 'native' 模块直接丢弃
+    (x.kind === undefined || x.kind === 'web') &&
     (x.glyph === undefined || typeof x.glyph === 'string') &&
-    (x.iconPath === undefined || typeof x.iconPath === 'string') &&
-    (native === undefined ||
-      (typeof native === 'object' &&
-        native !== null &&
-        // 窗口绑定要进程名，内置安卓引擎要包名，两者有一个即可
-        (typeof (native as Record<string, unknown>).processName === 'string' ||
-          typeof (native as Record<string, unknown>).androidPackage === 'string' ||
-          (native as Record<string, unknown>).mode === 'android')))
+    (x.iconPath === undefined || typeof x.iconPath === 'string')
   )
 }
 
@@ -185,13 +181,11 @@ export const useModulesStore = defineStore('modules', () => {
     const next: ModuleConfig = {
       id: input.id || createModuleId(input.name),
       name: input.name.trim(),
-      kind: input.kind ?? 'web',
       url: normalize(input.url) || input.url.trim(),
       glyph: (input.glyph || input.name).trim().slice(0, 2),
       iconPath: input.iconPath,
       color: input.color || '#14B8A6',
-      order,
-      native: input.native ? { ...input.native } : undefined
+      order
     }
     moduleList.value = [...moduleList.value, next]
     ensureState(next)
@@ -205,7 +199,6 @@ export const useModulesStore = defineStore('modules', () => {
     if (idx < 0) return
     const m = { ...moduleList.value[idx] }
     if (patch.name !== undefined) m.name = patch.name.trim()
-    if (patch.kind !== undefined) m.kind = patch.kind
     if (patch.url !== undefined) m.url = normalize(patch.url) || patch.url.trim()
     if (patch.glyph !== undefined) m.glyph = patch.glyph.trim().slice(0, 2)
     if (patch.color !== undefined) m.color = patch.color
@@ -214,20 +207,6 @@ export const useModulesStore = defineStore('modules', () => {
       if (patch.iconPath) m.iconPath = patch.iconPath
       else delete m.iconPath
     }
-    if (patch.native !== undefined) {
-      m.native = {
-        mode: patch.native.mode === 'android' ? 'android' : 'window',
-        processName: patch.native.processName?.trim() || undefined,
-        androidPackage: patch.native.androidPackage?.trim() || undefined,
-        windowTitle: patch.native.windowTitle?.trim() || undefined,
-        className: patch.native.className?.trim() || undefined,
-        executablePath: patch.native.executablePath?.trim() || undefined,
-        arguments: patch.native.arguments?.trim() || undefined,
-        launchOnOpen: patch.native.launchOnOpen === true
-      }
-    }
-    // 从原生应用改回网站时，残留的窗口绑定要一起清掉，否则下次切回原生会用到旧进程。
-    if (m.kind !== 'native') delete m.native
     const next = [...moduleList.value]
     next[idx] = m
     moduleList.value = next

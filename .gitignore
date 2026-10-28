@@ -20,6 +20,9 @@ resources/core/mihomo
 resources/core/mihomo.exe
 resources/core/geodata/
 
+# 本地运行时与草稿目录：体积大，绝不入库，也绝不落系统盘
+.runtime/
+
 # 本地工作区数据（IDE / 助手缓存）
 .workbuddy/
 .agents/
@@ -27,9 +30,3 @@ resources/core/geodata/
 # 打包缓存与日志
 .eb-cache/
 .eb.log
-
-# WPF 外壳（desktop/）构建产物
-desktop/**/bin/
-desktop/**/obj/
-# 外壳调试截图
-desktop/*.png
