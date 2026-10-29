@@ -92,14 +92,13 @@ html[data-theme='orca-night'] .workbench-home .home-panel {
   border-color: var(--home-panel-border) !important;
 }
 
-html[data-theme='whale'] .workbench-home .home-panel,
-html[data-theme='whale-night'] .workbench-home .home-panel,
 html[data-theme='whale'] .panel,
 html[data-theme='whale-night'] .panel,
 html[data-theme='whale'] .mac-group,
 html[data-theme='whale-night'] .mac-group {
   /* 直接在元素上算，不经过 --home-panel-alpha 的继承链：
-     这两套的插画白色面积太大，留 4% 透光就会在卡片里留下人物轮廓 */
+     这两套的插画白色面积太大，留 4% 透光就会在卡片里留下人物轮廓。
+     注意这里**不能**带上 .home-panel：首页卡片的背景要跟着「组件背景不透明度」走 */
   background: color-mix(in srgb, var(--surface-raised) 96%, transparent) !important;
   backdrop-filter: blur(16px) saturate(1.08);
   border-color: color-mix(in srgb, var(--accent) 26%, transparent);

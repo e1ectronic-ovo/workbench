@@ -28,16 +28,22 @@ export interface HomeLayoutSettings {
 }
 
 interface HomeState {
+  /** 状态结构版本；低于当前版本时做一次性迁移，迁完写回，避免每次启动重复改 */
+  version?: number
   layout: HomeLayoutSettings
   widgets: HomeWidgetConfig[]
 }
 
 const STORAGE_KEY = 'workbench.home-v2'
+const STATE_VERSION = 2
+
+/** 旧默认值 42%：那套皮肤把卡片写死成近实心，滑块其实从来没生效过，升级时按新默认重设 */
+const LEGACY_DEFAULT_OPACITY = 42
 
 const DEFAULT_LAYOUT: HomeLayoutSettings = {
   columns: 6,
   gap: 12,
-  panelOpacity: 42
+  panelOpacity: 96
 }
 
 function defaultWidgetConfig(def: HomeWidgetDef): HomeWidgetConfig {
@@ -50,6 +56,7 @@ function defaultWidgetConfig(def: HomeWidgetDef): HomeWidgetConfig {
 
 function defaultState(): HomeState {
   return {
+    version: STATE_VERSION,
     layout: { ...DEFAULT_LAYOUT },
     widgets: HOME_WIDGET_DEFS.map(defaultWidgetConfig)
   }
@@ -153,7 +160,7 @@ function migrateLegacy(raw: unknown): HomeState | null {
     }
   })
 
-  return { layout: { ...DEFAULT_LAYOUT }, widgets }
+  return { version: STATE_VERSION, layout: { ...DEFAULT_LAYOUT }, widgets }
 }
 
 function loadState(): HomeState {
@@ -162,16 +169,20 @@ function loadState(): HomeState {
     if (raw) {
       const data = JSON.parse(raw) as Partial<HomeState>
       if (data.layout && data.widgets && Array.isArray(data.widgets)) {
+        // 老版本的 42% 是「没动过」的默认值，迁移一次后由 version 打住
+        const stale = data.version !== STATE_VERSION
         const layout: HomeLayoutSettings = {
           columns: clampInt(data.layout.columns, 4, 16, DEFAULT_LAYOUT.columns),
           gap: clampInt(data.layout.gap, 4, 32, DEFAULT_LAYOUT.gap),
-          panelOpacity: clampInt(data.layout.panelOpacity, 0, 100, DEFAULT_LAYOUT.panelOpacity)
+          panelOpacity: stale
+            ? normalizePanelOpacity(data.layout.panelOpacity)
+            : clampInt(data.layout.panelOpacity, 0, 100, DEFAULT_LAYOUT.panelOpacity)
         }
         const widgets = resolveOverlaps(
           mergeWithRegistry(data.widgets.filter(isWidgetConfig)),
           layout.columns
         )
-        return { layout, widgets }
+        return { version: STATE_VERSION, layout, widgets }
       }
     }
 
@@ -195,6 +206,13 @@ function loadState(): HomeState {
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const n = typeof value === 'number' ? Math.round(value) : fallback
   return Math.min(max, Math.max(min, n))
+}
+
+function normalizePanelOpacity(value: unknown): number {
+  // 42 是「从没动过滑块」的旧默认值，那时卡片背景被主题写死了，用户看到的是近实心，
+  // 直接沿用会让升级后卡片突然变透明，所以按新默认值处理
+  if (value === LEGACY_DEFAULT_OPACITY) return DEFAULT_LAYOUT.panelOpacity
+  return clampInt(value, 0, 100, DEFAULT_LAYOUT.panelOpacity)
 }
 
 export const useHomeWidgetsStore = defineStore('homeWidgets', () => {
@@ -248,6 +266,7 @@ export const useHomeWidgetsStore = defineStore('homeWidgets', () => {
       next.gap = clampInt(patch.gap, 4, 32, DEFAULT_LAYOUT.gap)
     }
     if (patch.panelOpacity !== undefined) {
+      // 用户主动拖动时不能套用迁移逻辑：42 也可以是他真的想要的透明度
       next.panelOpacity = clampInt(patch.panelOpacity, 0, 100, DEFAULT_LAYOUT.panelOpacity)
     }
 

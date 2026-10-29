@@ -33,8 +33,14 @@ html[data-theme^='megumi'] .workbench-home {
   background: transparent;
 }
 
-/* 卡片：主题底色和插画亮度差得多，留太多透光就会看不出卡片边界 */
-html[data-theme^='megumi'] .workbench-home .home-panel,
+/* 卡片：跟着「组件背景不透明度」走（默认值已经调到接近实心），
+   主题底色和插画亮度差得多，所以默认不透明度给得高一些 */
+html[data-theme^='megumi'] .workbench-home .home-panel {
+  background: var(--home-panel-bg) !important;
+  backdrop-filter: blur(18px) saturate(1.04);
+  border-color: var(--home-panel-border) !important;
+}
+
 html[data-theme^='megumi'] .panel,
 html[data-theme^='megumi'] .mac-group {
   background: color-mix(in srgb, var(--surface-raised) 96%, transparent) !important;

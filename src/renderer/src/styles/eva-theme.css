@@ -561,7 +561,12 @@ html[data-theme^='eva'] .home-panel {
   position: relative;
   border-radius: 0 !important;
   border-color: color-mix(in srgb, var(--eva-alt) 40%, transparent) !important;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--eva-bg-3) 82%, transparent), color-mix(in srgb, var(--eva-bg-0) 74%, transparent)) !important;
+  /* 两层底色都跟着「组件背景不透明度」走，否则滑块在 EVA 里完全没反应 */
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--eva-bg-3) var(--home-panel-alpha, 94%), transparent),
+    color-mix(in srgb, var(--eva-bg-0) var(--home-panel-alpha, 90%), transparent)
+  ) !important;
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--eva-sheen) 5%, transparent),
     inset 0 0 0 1px color-mix(in srgb, var(--eva-alt) 4%, transparent),
