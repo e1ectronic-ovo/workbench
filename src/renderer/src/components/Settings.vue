@@ -441,8 +441,8 @@
       </div>
     </div>
 
-    <!-- 编辑 / 新建网站 -->
-    <div v-if="dialogOpen" class="mac-sheet-backdrop" @click.self="closeDialog">
+    <!-- 编辑 / 新建网站 — 遮罩不响应点击：只能通过「取消」或「保存」关闭 -->
+    <div v-if="dialogOpen" class="mac-sheet-backdrop">
       <form class="mac-sheet" @submit.prevent="onSave">
         <h2 class="mac-sheet__title">{{ editingId ? '编辑模块' : '添加网站' }}</h2>
 
