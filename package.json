@@ -1,6 +1,6 @@
 {
   "name": "workbench",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Whaletide (鲸汐) - personal desktop workbench with dashboard, site modules and built-in proxy",
   "private": true,
   "main": "out/main/index.js",
