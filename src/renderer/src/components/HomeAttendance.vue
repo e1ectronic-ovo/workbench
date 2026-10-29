@@ -66,20 +66,37 @@
         </label>
 
         <label class="mac-field">
-          <span>每日工时（小时）</span>
-          <input
-            class="work-hours-input"
-            :value="editWorkHours"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            maxlength="2"
-            placeholder="9"
-            required
-            @input="onWorkHoursInput"
-            @keydown="onWorkHoursKeydown"
-            @paste="onWorkHoursPaste"
-            @blur="normalizeWorkHoursInput"
-          />
+          <span>每日工时</span>
+          <div class="work-duration">
+            <div class="work-duration__cell">
+              <input
+                class="work-hours-input"
+                :value="editHours"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="2"
+                placeholder="9"
+                @input="onDurationInput('hours', $event)"
+                @keydown="onDurationKeydown"
+                @blur="normalizeDurationInputs"
+              />
+              <span class="work-duration__unit">小时</span>
+            </div>
+            <div class="work-duration__cell">
+              <input
+                class="work-hours-input work-minutes-input"
+                :value="editMinutes"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="2"
+                placeholder="0"
+                @input="onDurationInput('minutes', $event)"
+                @keydown="onDurationKeydown"
+                @blur="normalizeDurationInputs"
+              />
+              <span class="work-duration__unit">分钟</span>
+            </div>
+          </div>
         </label>
 
         <p v-if="editError" class="sheet-warn">{{ editError }}</p>
@@ -118,19 +135,20 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import AttendanceHistoryCalendar from './AttendanceHistoryCalendar.vue'
 import {
-  DEFAULT_WORK_HOURS,
+  DEFAULT_WORK_MINUTES,
   formatClockTime,
   formatCountdown,
+  formatWorkDuration,
   isoToTimeInput,
-  MAX_WORK_HOURS,
-  MIN_WORK_HOURS,
-  parseWorkHoursInput,
-  sanitizeWorkHoursInput,
+  MAX_WORK_MINUTES,
+  MIN_WORK_MINUTES,
+  sanitizeDurationInput,
+  splitWorkMinutes,
   useAttendanceStore,
   workProgress
 } from '../stores/attendance'
 
-const WORK_HOURS_NAV_KEYS = new Set([
+const WORK_DURATION_NAV_KEYS = new Set([
   'Backspace',
   'Delete',
   'ArrowLeft',
@@ -145,7 +163,8 @@ const now = ref(Date.now())
 const editOpen = ref(false)
 const historyOpen = ref(false)
 const editTime = ref('')
-const editWorkHours = ref(String(DEFAULT_WORK_HOURS))
+const editHours = ref(String(Math.floor(DEFAULT_WORK_MINUTES / 60)))
+const editMinutes = ref(String(DEFAULT_WORK_MINUTES % 60))
 const editError = ref('')
 const historyCalendarRef = ref<InstanceType<typeof AttendanceHistoryCalendar> | null>(null)
 
@@ -190,7 +209,9 @@ const countdownDisplay = computed(() => {
 })
 
 const countdownHint = computed(() => {
-  if (isDone.value) return `今日工时已满 ${attendance.workHours || DEFAULT_WORK_HOURS} 小时`
+  if (isDone.value) {
+    return `今日工时已满 ${formatWorkDuration(attendance.workMinutes || DEFAULT_WORK_MINUTES)}`
+  }
   const out = attendance.clockOutTime
   if (!out) return ''
   return `${formatClockTime(out.toISOString())} 下班`
@@ -212,39 +233,44 @@ function openEdit() {
   editTime.value = attendance.todayRecord
     ? isoToTimeInput(attendance.todayRecord.clockIn)
     : isoToTimeInput(new Date().toISOString())
-  editWorkHours.value = String(attendance.workHours || DEFAULT_WORK_HOURS)
+  const parts = splitWorkMinutes(attendance.workMinutes || DEFAULT_WORK_MINUTES)
+  editHours.value = String(parts.hours)
+  editMinutes.value = String(parts.minutes)
   editOpen.value = true
 }
 
-function onWorkHoursInput(e: Event) {
+function onDurationInput(field: 'hours' | 'minutes', e: Event) {
   const input = e.target as HTMLInputElement
-  const digits = sanitizeWorkHoursInput(input.value)
-  editWorkHours.value = digits
+  const digits = sanitizeDurationInput(input.value)
+  if (field === 'hours') editHours.value = digits
+  else editMinutes.value = digits
   input.value = digits
 }
 
-function onWorkHoursKeydown(e: KeyboardEvent) {
+function onDurationKeydown(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey || e.altKey) return
-  if (WORK_HOURS_NAV_KEYS.has(e.key)) return
+  if (WORK_DURATION_NAV_KEYS.has(e.key)) return
   if (/^\d$/.test(e.key)) return
   e.preventDefault()
 }
 
-function onWorkHoursPaste(e: ClipboardEvent) {
-  e.preventDefault()
-  const text = e.clipboardData?.getData('text') ?? ''
-  editWorkHours.value = sanitizeWorkHoursInput(text).slice(0, 2)
-}
-
-function normalizeWorkHoursInput() {
-  if (!editWorkHours.value) {
-    editWorkHours.value = String(attendance.workHours || DEFAULT_WORK_HOURS)
+/**
+ * 失焦时把两格理顺：分钟超过 59 自动进位到小时，总时长夹到 24 小时以内。
+ * 两格都空着就还原成当前设置，避免留下一个空表单。
+ */
+function normalizeDurationInputs() {
+  if (!editHours.value && !editMinutes.value) {
+    const parts = splitWorkMinutes(attendance.workMinutes || DEFAULT_WORK_MINUTES)
+    editHours.value = String(parts.hours)
+    editMinutes.value = String(parts.minutes)
     return
   }
-  const parsed = parseWorkHoursInput(editWorkHours.value)
-  if (parsed !== null) {
-    editWorkHours.value = String(parsed)
-  }
+  const hours = parseInt(editHours.value || '0', 10)
+  const minutes = parseInt(editMinutes.value || '0', 10)
+  const raw = (Number.isNaN(hours) ? 0 : hours) * 60 + (Number.isNaN(minutes) ? 0 : minutes)
+  const parts = splitWorkMinutes(Math.min(MAX_WORK_MINUTES, Math.max(0, raw)))
+  editHours.value = String(parts.hours)
+  editMinutes.value = String(parts.minutes)
 }
 
 function closeEdit() {
@@ -258,12 +284,8 @@ function fillEditNow() {
 
 function saveEdit() {
   editError.value = ''
-  if (!editWorkHours.value) {
-    editError.value = '请设置每日工时'
-    return
-  }
-  if (!attendance.setWorkHoursFromInput(editWorkHours.value)) {
-    editError.value = `工时必须为 ${MIN_WORK_HOURS}–${MAX_WORK_HOURS} 的整数`
+  if (!attendance.setWorkDurationFromInput(editHours.value, editMinutes.value)) {
+    editError.value = `每日工时需在 ${MIN_WORK_MINUTES} 分钟到 ${MAX_WORK_MINUTES / 60} 小时之间`
     return
   }
   if (!editTime.value) {
@@ -492,9 +514,37 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
+.work-duration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-duration__cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.work-duration__unit {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .work-hours-input {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
   box-sizing: border-box;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-minutes-input {
+  font-family: var(--font-mono);
 }
 
 .sheet-actions {

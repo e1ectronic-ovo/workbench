@@ -3,10 +3,12 @@ import { computed, ref } from 'vue'
 
 const STORAGE_KEY = 'workbench.attendance'
 const REMINDER_KEY = 'workbench.attendance.reminder'
-const WORK_HOURS_KEY = 'workbench.attendance.work-hours'
-export const DEFAULT_WORK_HOURS = 9
-export const MIN_WORK_HOURS = 1
-export const MAX_WORK_HOURS = 24
+const WORK_MINUTES_KEY = 'workbench.attendance.work-minutes'
+/** 旧版本只记整点小时，读不到新键时用它迁移一次 */
+const LEGACY_WORK_HOURS_KEY = 'workbench.attendance.work-hours'
+export const DEFAULT_WORK_MINUTES = 9 * 60
+export const MIN_WORK_MINUTES = 1
+export const MAX_WORK_MINUTES = 24 * 60
 export const REMINDER_BEFORE_MINUTES = 3
 
 export interface DayAttendance {
@@ -98,47 +100,73 @@ function persistReminder(reminder: ReminderSettings) {
   }
 }
 
-export function clampWorkHours(hours: number): number {
-  return Math.min(MAX_WORK_HOURS, Math.max(MIN_WORK_HOURS, Math.round(hours)))
+/** 工时一律以「总分钟」保存，界面再拆成小时 + 分钟两格 */
+export function clampWorkMinutes(minutes: number): number {
+  return Math.min(MAX_WORK_MINUTES, Math.max(MIN_WORK_MINUTES, Math.round(minutes)))
 }
 
-export function sanitizeWorkHoursInput(value: string): string {
-  return value.replace(/\D/g, '')
+/** 小时/分钟输入框都只留两位数字 */
+export function sanitizeDurationInput(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 2)
 }
 
-export function parseWorkHoursInput(value: string): number | null {
-  const digits = sanitizeWorkHoursInput(value)
-  if (!digits) return null
-  const hours = parseInt(digits, 10)
-  if (Number.isNaN(hours)) return null
-  return clampWorkHours(hours)
+/** 540 → 「9 小时」，555 → 「9 小时 15 分钟」，45 → 「45 分钟」 */
+export function formatWorkDuration(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes))
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (h && m) return `${h} 小时 ${m} 分钟`
+  if (h) return `${h} 小时`
+  return `${m} 分钟`
 }
 
-function loadWorkHours(): number {
+export function splitWorkMinutes(minutes: number): { hours: number; minutes: number } {
+  const total = Math.max(0, Math.round(minutes))
+  return { hours: Math.floor(total / 60), minutes: total % 60 }
+}
+
+/** 两格合并成总分钟；少于 1 分钟或超过 24 小时返回 null */
+export function parseWorkDurationInput(hoursInput: string, minutesInput: string): number | null {
+  const hDigits = sanitizeDurationInput(hoursInput)
+  const mDigits = sanitizeDurationInput(minutesInput)
+  if (!hDigits && !mDigits) return null
+  const hours = hDigits ? parseInt(hDigits, 10) : 0
+  const mins = mDigits ? parseInt(mDigits, 10) : 0
+  if (Number.isNaN(hours) || Number.isNaN(mins)) return null
+  const total = hours * 60 + mins
+  if (total < MIN_WORK_MINUTES) return null
+  return clampWorkMinutes(total)
+}
+
+function loadWorkMinutes(): number {
   try {
-    const raw = localStorage.getItem(WORK_HOURS_KEY)
-    if (!raw || raw === 'undefined' || raw === 'null') return DEFAULT_WORK_HOURS
-    const parsed = parseWorkHoursInput(raw)
-    return parsed ?? DEFAULT_WORK_HOURS
+    const stored = localStorage.getItem(WORK_MINUTES_KEY)
+    const parsed = stored ? parseInt(stored, 10) : NaN
+    if (Number.isFinite(parsed)) return clampWorkMinutes(parsed)
+    // 旧版本只存了整点小时，这里折算成分钟
+    const legacy = localStorage.getItem(LEGACY_WORK_HOURS_KEY)
+    const legacyHours = legacy ? parseInt(legacy, 10) : NaN
+    if (Number.isFinite(legacyHours)) return clampWorkMinutes(legacyHours * 60)
+    return DEFAULT_WORK_MINUTES
   } catch {
-    return DEFAULT_WORK_HOURS
+    return DEFAULT_WORK_MINUTES
   }
 }
 
-function normalizeWorkHoursState(value: unknown): number {
-  if (typeof value === 'number' && !Number.isNaN(value)) {
-    return clampWorkHours(value)
+function normalizeWorkMinutesState(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return clampWorkMinutes(value)
   }
   if (typeof value === 'string') {
-    const parsed = parseWorkHoursInput(value)
-    if (parsed !== null) return parsed
+    const parsed = parseInt(value, 10)
+    if (Number.isFinite(parsed)) return clampWorkMinutes(parsed)
   }
-  return DEFAULT_WORK_HOURS
+  return DEFAULT_WORK_MINUTES
 }
 
-function persistWorkHours(hours: number) {
+function persistWorkMinutes(minutes: number) {
   try {
-    localStorage.setItem(WORK_HOURS_KEY, String(hours))
+    localStorage.setItem(WORK_MINUTES_KEY, String(minutes))
   } catch {
     /* ignore */
   }
@@ -154,8 +182,8 @@ export function formatClockTime(iso: string): string {
   })
 }
 
-export function addWorkHours(iso: string, hours: number): Date {
-  return new Date(new Date(iso).getTime() + hours * 60 * 60 * 1000)
+export function addWorkMinutes(iso: string, minutes: number): Date {
+  return new Date(new Date(iso).getTime() + minutes * 60 * 1000)
 }
 
 export function isoToTimeInput(iso: string): string {
@@ -196,12 +224,12 @@ export function timeInputToDate(time: string, base = new Date()): Date | null {
 export const useAttendanceStore = defineStore('attendance', () => {
   const records = ref<AttendanceMap>(loadRecords())
   const reminder = ref<ReminderSettings>(loadReminder())
-  const workHoursState = ref(normalizeWorkHoursState(loadWorkHours()))
+  const workMinutesState = ref(normalizeWorkMinutesState(loadWorkMinutes()))
   const today = ref(todayKey())
 
-  persistWorkHours(workHoursState.value)
+  persistWorkMinutes(workMinutesState.value)
 
-  const workHours = computed(() => workHoursState.value)
+  const workMinutes = computed(() => workMinutesState.value)
 
   const todayRecord = computed(() => records.value[today.value] ?? null)
 
@@ -211,7 +239,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
 
   const clockOutTime = computed(() => {
     if (!todayRecord.value) return null
-    return addWorkHours(todayRecord.value.clockIn, workHoursState.value)
+    return addWorkMinutes(todayRecord.value.clockIn, workMinutesState.value)
   })
 
   const reminderFireTime = computed(() => {
@@ -276,20 +304,21 @@ export const useAttendanceStore = defineStore('attendance', () => {
     persistReminder(reminder.value)
   }
 
-  function setWorkHours(hours: number) {
-    const next = normalizeWorkHoursState(hours)
-    workHoursState.value = next
-    persistWorkHours(next)
+  function setWorkMinutes(minutes: number) {
+    const next = normalizeWorkMinutesState(minutes)
+    workMinutesState.value = next
+    persistWorkMinutes(next)
     if (reminder.value.firedDateKey === today.value) {
       reminder.value = { ...reminder.value, firedDateKey: null }
       persistReminder(reminder.value)
     }
   }
 
-  function setWorkHoursFromInput(value: string): boolean {
-    const parsed = parseWorkHoursInput(value)
+  /** 小时 + 分钟两格一起提交 */
+  function setWorkDurationFromInput(hoursInput: string, minutesInput: string): boolean {
+    const parsed = parseWorkDurationInput(hoursInput, minutesInput)
     if (parsed === null) return false
-    setWorkHours(parsed)
+    setWorkMinutes(parsed)
     return true
   }
 
@@ -331,7 +360,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
     today,
     todayRecord,
     records: recordMap,
-    workHours,
+    workMinutes,
     clockInTime,
     clockOutTime,
     reminderFireTime,
@@ -343,8 +372,8 @@ export const useAttendanceStore = defineStore('attendance', () => {
     deleteRecord,
     refreshToday,
     setReminderEnabled,
-    setWorkHours,
-    setWorkHoursFromInput,
+    setWorkMinutes,
+    setWorkDurationFromInput,
     markReminderFired,
     syncReminderSchedule
   }
