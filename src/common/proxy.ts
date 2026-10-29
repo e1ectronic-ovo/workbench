@@ -28,7 +28,9 @@ export interface ProxySubscriptionInfo {
 }
 
 export interface ProxySettings {
-  /** 应用启动后自动连接内核 */
+  /** 设置结构版本，用于一次性迁移；旧文件没有这个字段 */
+  settingsVersion: number
+  /** 应用启动后自动连接内核；默认关闭，需要用户在设置里手动开启 */
   enabledOnStart: boolean
   /** 自定义内核路径；为空时使用随应用分发的内置路径 */
   corePath: string
@@ -140,6 +142,8 @@ export interface ProxyTestProgress {
 
 export const DEFAULT_MIXED_PORT = 7890
 export const DEFAULT_CONTROLLER_PORT = 9090
+/** 每次不兼容的默认值变化就 +1，由 settings.ts 做一次性迁移 */
+export const PROXY_SETTINGS_VERSION = 2
 
 export function emptyTraffic(): ProxyTraffic {
   return { up: 0, down: 0, totalUp: 0, totalDown: 0, sessionUp: 0, sessionDown: 0, connections: 0 }
@@ -158,7 +162,8 @@ export function emptyProfile(): ProxyProfileInfo {
 
 export function defaultProxySettings(): ProxySettings {
   return {
-    enabledOnStart: true,
+    settingsVersion: PROXY_SETTINGS_VERSION,
+    enabledOnStart: false,
     corePath: '',
     mixedPort: DEFAULT_MIXED_PORT,
     controllerPort: DEFAULT_CONTROLLER_PORT,

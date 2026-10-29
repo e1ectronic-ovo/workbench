@@ -269,6 +269,23 @@
         </section>
 
         <section class="mac-section">
+          <p class="mac-section__label">启动</p>
+          <div class="mac-group">
+            <label class="mac-row mac-toggle">
+              <div class="mac-row__text">
+                <div class="mac-row__title">启动时自动连接</div>
+                <div class="mac-row__sub">打开鲸汐时自动拉起代理内核；默认关闭，需要时再手动连接</div>
+              </div>
+              <input
+                type="checkbox"
+                :checked="proxySettings.enabledOnStart"
+                @change="setEnabledOnStart(($event.target as HTMLInputElement).checked)"
+              />
+            </label>
+          </div>
+        </section>
+
+        <section class="mac-section">
           <p class="mac-section__label">端口</p>
           <div class="mac-group">
             <div class="mac-row">
@@ -715,6 +732,11 @@ async function setPort(key: 'mixedPort' | 'controllerPort', e: Event) {
     return
   }
   await proxy.patchSettings({ [key]: value })
+}
+
+async function setEnabledOnStart(enabled: boolean) {
+  await proxy.patchSettings({ enabledOnStart: enabled })
+  proxy.flash(enabled ? '下次启动会自动连接代理' : '启动时不再自动连接代理')
 }
 
 const themeOptions: {

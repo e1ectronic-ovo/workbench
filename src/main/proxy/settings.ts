@@ -6,6 +6,7 @@ import {
   defaultProxySettings,
   DEFAULT_CONTROLLER_PORT,
   DEFAULT_MIXED_PORT,
+  PROXY_SETTINGS_VERSION,
   type ProxyMode,
   type ProxySettings
 } from '../../common/proxy'
@@ -49,8 +50,17 @@ function normalize(raw: unknown): ProxySettings {
     controllerPort = mixedPort === DEFAULT_CONTROLLER_PORT ? DEFAULT_CONTROLLER_PORT + 1 : DEFAULT_CONTROLLER_PORT
   }
 
+  // v2 之前「启动时自动连接」没有界面开关，文件里那个 true 不是用户的选择，
+  // 一律按关闭处理，避免升级后依然开机就拉起内核
+  const version = typeof r.settingsVersion === 'number' ? r.settingsVersion : 1
+  const enabledOnStart =
+    version >= PROXY_SETTINGS_VERSION && typeof r.enabledOnStart === 'boolean'
+      ? r.enabledOnStart
+      : base.enabledOnStart
+
   return {
-    enabledOnStart: typeof r.enabledOnStart === 'boolean' ? r.enabledOnStart : base.enabledOnStart,
+    settingsVersion: PROXY_SETTINGS_VERSION,
+    enabledOnStart,
     corePath: typeof r.corePath === 'string' ? r.corePath : '',
     mixedPort,
     controllerPort,

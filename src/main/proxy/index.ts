@@ -148,8 +148,8 @@ export class ProxyService {
       this.handleUnexpectedExit()
     }
 
-    // 有配置就自动拉起内核（不再提供开关）
-    if (profileStore.activeText() && this.coreReady()) {
+    // 默认不自动拉起内核：开机就挂梯子太重，改由设置里的「启动时自动连接」控制
+    if (this.settings.enabledOnStart && profileStore.activeText() && this.coreReady()) {
       setTimeout(() => {
         void this.start()
       }, 1200)
