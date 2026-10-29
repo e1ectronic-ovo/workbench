@@ -13,6 +13,7 @@ import {
 import { ProxyService, registerProxyIpc } from './proxy'
 import { destroyTray, setTrayActive, setupTray } from './tray'
 import { registerUpdateIpc, updateService } from './updater'
+import { registerWeatherIpc } from './weather'
 import {
   installCloseBehavior,
   readCloseAction,
@@ -620,6 +621,7 @@ app.whenReady().then(() => {
   registerIpc()
   registerProxyIpc(proxyService)
   registerUpdateIpc()
+  registerWeatherIpc()
   registerDevCapture()
   createWindow()
 

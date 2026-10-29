@@ -106,6 +106,31 @@ const api = {
 
   openExternal: (url: string) => shell.openExternal(url),
 
+  /** 天气数据统一走主进程取（中国天气网要 Referer，渲染进程改不了这个头） */
+  weather: {
+    fetchIndex: (cityCode: string) =>
+      ipcRenderer.invoke('weather:fetch', { kind: 'index', key: cityCode }) as Promise<{
+        ok: boolean
+        text?: string
+        error?: string
+      }>,
+
+    search: (query: string) =>
+      ipcRenderer.invoke('weather:fetch', { kind: 'search', key: query }) as Promise<{
+        ok: boolean
+        text?: string
+        error?: string
+      }>,
+
+    /** 街道/镇（12 位码）只有当天的天气 */
+    fetchToday: (code: string) =>
+      ipcRenderer.invoke('weather:fetch', { kind: 'today', key: code }) as Promise<{
+        ok: boolean
+        text?: string
+        error?: string
+      }>
+  },
+
   proxy: {
     snapshot: () => ipcRenderer.invoke('proxy:snapshot') as Promise<ProxySnapshot>,
 

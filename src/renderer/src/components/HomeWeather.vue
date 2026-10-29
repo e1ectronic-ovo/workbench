@@ -25,14 +25,8 @@
       </div>
       <div class="weather-meta">
         <span class="weather-cond">{{ conditionLabel(snapshot) }}</span>
-        <span class="weather-sub">
-          湿度 {{ snapshot.humidity }}%
-          <template v-if="snapshot.quality"> · 空气{{ snapshot.quality }}</template>
-        </span>
-        <span class="weather-sub">
-          <template v-if="snapshot.windUnit === 'level'">风速 {{ snapshot.wind }} 级</template>
-          <template v-else>体感 {{ snapshot.feels }}° · {{ snapshot.wind }} km/h</template>
-        </span>
+        <span v-if="metaLine" class="weather-sub">{{ metaLine }}</span>
+        <span v-if="windLine" class="weather-sub">{{ windLine }}</span>
       </div>
     </div>
 
@@ -125,6 +119,22 @@ const searchInput = ref<HTMLInputElement | null>(null)
 
 const placeLabel = computed(() => snapshot.value?.place.name || '选择城市')
 const hint = computed(() => (snapshot.value ? weatherHint(snapshot.value) : ''))
+
+/** 境外城市的源只有预报、没有实况，缺的项直接不显示，别渲染成 0% / 0 级 */
+const metaLine = computed(() => {
+  const snap = snapshot.value
+  if (!snap) return ''
+  const parts: string[] = []
+  if (snap.humidity >= 0) parts.push(`湿度 ${snap.humidity}%`)
+  if (snap.quality) parts.push(`空气${snap.quality}`)
+  return parts.join(' · ')
+})
+
+const windLine = computed(() => {
+  const snap = snapshot.value
+  if (!snap || snap.wind < 0) return ''
+  return snap.windUnit === 'level' ? `风速 ${snap.wind} 级` : `体感 ${snap.feels}° · ${snap.wind} km/h`
+})
 const updatedTitle = computed(() =>
   snapshot.value ? `更新于 ${formatWeatherUpdatedAt(snapshot.value.updatedAt)}` : '刷新天气'
 )

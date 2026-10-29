@@ -88,16 +88,44 @@ export function searchChinaPlaces(query: string): WeatherPlace[] {
   return matched.map(({ name, lat, lon, cityCode }) => ({ name, lat, lon, cityCode }))
 }
 
-export function findChinaCityCode(name: string): string | undefined {
+/** 按名字找内置城市，返回整条记录（要拿简体名和城市码） */
+export function findChinaPlace(name: string): ChinaPlace | undefined {
   const compact = name
     .split(/[·,，\s]/)[0]
     ?.replace(/市$|区$|县$|特别行政区$/g, '')
     .trim()
   if (!compact) return undefined
   const exact = CHINA_WEATHER_PLACES.find((place) => place.name === compact)
-  if (exact) return exact.cityCode
-  const contains = CHINA_WEATHER_PLACES.find(
+  if (exact) return exact
+  return CHINA_WEATHER_PLACES.find(
     (place) => compact.includes(place.name) || place.name.includes(compact)
   )
-  return contains?.cityCode
+}
+
+export function findChinaCityCode(name: string): string | undefined {
+  return findChinaPlace(name)?.cityCode
+}
+
+/**
+ * 按经纬度找最近的常用城市。定位或反查地名失败时用它兜底，
+ * 保证总能拿到一个可用的城市码（只认 200 km 以内，超出不硬凑）。
+ */
+export function nearestChinaPlace(lat: number, lon: number): ChinaPlace | undefined {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return undefined
+  if (Math.abs(lat) < 0.01 && Math.abs(lon) < 0.01) return undefined
+
+  let best: ChinaPlace | undefined
+  let bestScore = Number.POSITIVE_INFINITY
+  const scale = Math.cos((lat * Math.PI) / 180)
+  for (const place of CHINA_WEATHER_PLACES) {
+    const dx = (place.lon - lon) * scale
+    const dy = place.lat - lat
+    const score = dx * dx + dy * dy
+    if (score < bestScore) {
+      bestScore = score
+      best = place
+    }
+  }
+  // 3.2 平方度 ≈ 半径 1.79° ≈ 200 km
+  return bestScore <= 3.2 ? best : undefined
 }

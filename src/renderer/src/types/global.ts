@@ -70,6 +70,14 @@ export interface WorkbenchAPI {
   onGuestOpenTab: (cb: (payload: { url: string }) => void) => () => void
   openExternal: (url: string) => Promise<void>
 
+  /** 中国天气网取数（主进程代取：接口要求 Referer，且无 CORS 头） */
+  weather?: {
+    fetchIndex: (cityCode: string) => Promise<{ ok: boolean; text?: string; error?: string }>
+    search: (query: string) => Promise<{ ok: boolean; text?: string; error?: string }>
+    /** 街道/镇（12 位码）只有当天的天气 */
+    fetchToday: (code: string) => Promise<{ ok: boolean; text?: string; error?: string }>
+  }
+
   update: {
     state: () => Promise<UpdateState>
     check: () => Promise<UpdateState>

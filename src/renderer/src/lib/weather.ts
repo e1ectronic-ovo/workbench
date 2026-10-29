@@ -1,4 +1,4 @@
-import { findChinaCityCode, searchChinaPlaces } from './china-places'
+import { findChinaPlace, nearestChinaPlace, searchChinaPlaces } from './china-places'
 
 export interface WeatherPlace {
   name: string
@@ -19,7 +19,9 @@ export interface WeatherSnapshot {
   place: WeatherPlace
   temp: number
   feels: number
+  /** 相对湿度 %；-1 表示数据源没有提供（境外城市只有预报） */
   humidity: number
+  /** 风速：windUnit=level 时是风力等级，否则 km/h；-1 表示没有 */
   wind: number
   code: number
   days: WeatherDay[]
@@ -30,7 +32,8 @@ export interface WeatherSnapshot {
   windUnit?: 'kmh' | 'level'
 }
 
-const CACHE_KEY = 'workbench.weather'
+/** v2：换了数据源（中国天气网），旧的 itboy 缓存直接作废 */
+const CACHE_KEY = 'workbench.weather.v2'
 const PREF_KEY = 'workbench.weather.pref'
 const CACHE_MS = 20 * 60 * 1000
 
@@ -347,13 +350,32 @@ async function locateByIp(): Promise<IpPlaceResult | null> {
   }
 }
 
+/**
+ * 经纬度 → 可用的地点。名字一律换成国内口径的简体地名（反查服务常给繁体或英文），
+ * 城市码优先取区县级精确匹配，兜底用内置城市表里最近的那个。
+ */
 async function placeFromCoords(
   lat: number,
   lon: number,
   fallbackName = ''
 ): Promise<WeatherPlace> {
-  const name = (await reverseName(lat, lon)) || fallbackName
-  return { name: isUsablePlaceName(name) ? name : '北京', lat, lon }
+  const name = fallbackName || (await reverseName(lat, lon))
+  const district = await districtChinaPlace(name)
+  const nearest = nearestChinaPlace(lat, lon)
+  const canonical = district ? null : await canonicalChinaPlace(name)
+  const cityCode = district?.cityCode ?? canonical?.cityCode ?? nearest?.cityCode
+  const display =
+    district?.name ||
+    canonical?.name ||
+    nearest?.name ||
+    (isUsablePlaceName(name) ? name : '')
+
+  return {
+    name: isUsablePlaceName(display) ? display : '北京',
+    lat,
+    lon,
+    cityCode
+  }
 }
 
 export function loadWeatherPref(): WeatherPref {
@@ -385,7 +407,16 @@ export function saveWeatherPref(pref: WeatherPref) {
 }
 
 function samePlace(a: WeatherPlace, b: WeatherPlace): boolean {
-  return Math.abs(a.lat - b.lat) < 0.02 && Math.abs(a.lon - b.lon) < 0.02
+  // 城市码最可靠；两边都没有码（境外地名）时才比经纬度
+  if (a.cityCode && b.cityCode) return a.cityCode === b.cityCode
+  if (hasCoords(a) && hasCoords(b)) {
+    return Math.abs(a.lat - b.lat) < 0.02 && Math.abs(a.lon - b.lon) < 0.02
+  }
+  return a.name === b.name
+}
+
+function hasCoords(place: WeatherPlace): boolean {
+  return Math.abs(place.lat) > 0.01 || Math.abs(place.lon) > 0.01
 }
 
 function hasCjk(value: string): boolean {
@@ -397,7 +428,10 @@ function dedupePlaces(places: WeatherPlace[]): WeatherPlace[] {
   const result: WeatherPlace[] = []
   for (const place of places) {
     if (!isUsablePlaceName(place.name)) continue
-    const key = `${place.name}|${place.lat.toFixed(2)},${place.lon.toFixed(2)}`
+    // 有城市码就按码去重：内置表带经纬度，同码时它排在前面，优先保留
+    const key = place.cityCode
+      ? `c:${place.cityCode}`
+      : `n:${place.name}|${place.lat.toFixed(2)},${place.lon.toFixed(2)}`
     if (seen.has(key)) continue
     seen.add(key)
     result.push(place)
@@ -538,13 +572,20 @@ export async function searchPlaces(query: string): Promise<WeatherPlace[]> {
   const q = query.trim()
   if (!q) return []
 
+  // 国内优先：内置城市表秒出，再补中国天气网的搜索结果（覆盖到区县和街道/镇）
   const local = searchChinaPlaces(q)
+  const domestic = await searchChinaWeather(q)
+  if (local.length || domestic.length) {
+    return rankByQuery(dedupePlaces([...local, ...domestic]), q).slice(0, 8)
+  }
+
+  // 国内接口都没有结果（大概率是境外地名）才回落到国外的地理编码
   const [photon, nominatim, openMeteo] = await Promise.all([
     searchPhoton(q),
     searchNominatim(q),
     searchOpenMeteo(q)
   ])
-  return dedupePlaces([...local, ...photon, ...nominatim, ...openMeteo]).slice(0, 8)
+  return rankByQuery(dedupePlaces([...photon, ...nominatim, ...openMeteo]), q).slice(0, 8)
 }
 
 async function resolvePlace(cached?: WeatherPlace): Promise<WeatherPlace> {
@@ -552,104 +593,371 @@ async function resolvePlace(cached?: WeatherPlace): Promise<WeatherPlace> {
 
   const geo = await locateByGeo()
   if (geo) {
-    const place = await placeFromCoords(geo.lat, geo.lon, fallbackName)
+    const place = await placeFromCoords(geo.lat, geo.lon)
     if (isUsablePlaceName(place.name)) return place
   }
 
   const ip = await locateByIp()
-  if (ip) return { name: ip.name, lat: ip.lat, lon: ip.lon }
+  if (ip) return placeFromCoords(ip.lat, ip.lon, ip.name)
 
   if (cached) {
     const place = await placeFromCoords(cached.lat, cached.lon, fallbackName)
     if (isUsablePlaceName(place.name)) return place
   }
 
-  return { name: '北京', lat: 39.9042, lon: 116.4074 }
+  return { name: '北京', lat: 39.9042, lon: 116.4074, cityCode: '101010100' }
 }
 
-function parseChinaTemp(value?: string): number {
-  const match = value?.match(/-?\d+/)
-  return match ? Number(match[0]) : 0
+// ── 中国天气网（weather.com.cn） ──────────────────────────────
+//
+// 数据从主进程代取（`window.workbench.weather`），接口要 Referer、也不给 CORS 头。
+// 实况在 `dataSK`，五天预报在 `fc.f`，今日概况在 `cityDZ`，预警在 `alarmDZ.w`。
+
+/** 02 阴，03 阵雨 … 官方编码表，带 d/n 前缀（白天/夜间） */
+const CN_CONDITIONS: Record<string, string> = {
+  '00': '晴',
+  '01': '多云',
+  '02': '阴',
+  '03': '阵雨',
+  '04': '雷阵雨',
+  '05': '雷阵雨伴有冰雹',
+  '06': '雨夹雪',
+  '07': '小雨',
+  '08': '中雨',
+  '09': '大雨',
+  '10': '暴雨',
+  '11': '大暴雨',
+  '12': '特大暴雨',
+  '13': '阵雪',
+  '14': '小雪',
+  '15': '中雪',
+  '16': '大雪',
+  '17': '暴雪',
+  '18': '雾',
+  '19': '冻雨',
+  '20': '沙尘暴',
+  '21': '小到中雨',
+  '22': '中到大雨',
+  '23': '大到暴雨',
+  '24': '暴雨到大暴雨',
+  '25': '大暴雨到特大暴雨',
+  '26': '小到中雪',
+  '27': '中到大雪',
+  '28': '大到暴雪',
+  '29': '浮尘',
+  '30': '扬沙',
+  '31': '强沙尘暴',
+  '32': '浓雾',
+  '49': '强阵雨',
+  '53': '霾',
+  '54': '晴',
+  '55': '多云',
+  '56': '阴',
+  '57': '阵雨',
+  '58': '小雨',
+  '99': '未知'
 }
 
-function chinaTypeToCode(type = ''): number {
-  if (type.includes('雷')) return 95
-  if (type.includes('雪')) return 71
-  if (type.includes('雨')) return 61
-  if (type.includes('雾')) return 45
-  if (type.includes('晴')) return 0
-  if (type.includes('云')) return 2
+function cnKey(code?: string): string {
+  return (code || '').replace(/^[a-z]/i, '').padStart(2, '0')
+}
+
+function cnConditionText(code?: string): string | undefined {
+  const text = CN_CONDITIONS[cnKey(code)]
+  return text && text !== '未知' ? text : undefined
+}
+
+/** 官方编码 → 本文件内部用的 WMO 风格编码（决定提示语里的雨雪判断） */
+function cnConditionCode(code?: string): number {
+  const n = Number(cnKey(code))
+  if (!Number.isFinite(n)) return 3
+  if (n === 0 || n === 54) return 0
+  if (n === 1 || n === 55) return 2
+  if (n === 2 || n === 56) return 3
+  if (n === 3 || n === 49 || n === 57) return 80
+  if (n === 4 || n === 5) return 95
+  if (n >= 6 && n <= 12) return 61
+  if (n === 13) return 85
+  if (n >= 14 && n <= 17) return 71
+  if (n === 18 || n === 32 || n === 53) return 45
+  if (n === 19) return 61
+  if (n >= 20 && n <= 31) return 45
+  if (n >= 21 && n <= 25) return 61
+  if (n >= 26 && n <= 28) return 71
+  if (n === 58) return 61
   return 3
 }
 
-async function loadChinaCityWeather(place: WeatherPlace): Promise<WeatherSnapshot | null> {
-  const cityCode = place.cityCode || findChinaCityCode(place.name)
-  if (!cityCode) return null
+/** 「10/29」→「2026-10-29」，跨年时补到下一年 */
+function cnDateIso(raw?: string): string {
+  const m = /^(\d{1,2})\/(\d{1,2})$/.exec((raw || '').trim())
+  if (!m) return ''
+  const month = Number(m[1])
+  const day = Number(m[2])
+  const now = new Date()
+  let year = now.getFullYear()
+  if (new Date(year, month - 1, day).getTime() < now.getTime() - 30 * 86400000) year += 1
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
 
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 5000)
-    const res = await fetch(`https://t.weather.itboy.net/api/weather/city/${cityCode}`, {
-      signal: controller.signal
-    })
-    clearTimeout(timer)
-    if (!res.ok) return null
+function aqiQuality(aqi?: number): string | undefined {
+  if (typeof aqi !== 'number' || !Number.isFinite(aqi)) return undefined
+  if (aqi <= 50) return '优'
+  if (aqi <= 100) return '良'
+  if (aqi <= 150) return '轻度污染'
+  if (aqi <= 200) return '中度污染'
+  if (aqi <= 300) return '重度污染'
+  return '严重污染'
+}
 
-    const data = (await res.json()) as {
-      status?: number
-      cityInfo?: { city?: string }
-      data?: {
-        wendu?: string
-        shidu?: string
-        quality?: string
-        forecast?: Array<{
-          ymd?: string
-          high?: string
-          low?: string
-          type?: string
-          notice?: string
-          fx?: string
-          fl?: string
-        }>
-      }
+function toInt(value: unknown, fallback = 0): number {
+  const n = typeof value === 'number' ? value : Number.parseFloat(String(value ?? ''))
+  return Number.isFinite(n) ? Math.round(n) : fallback
+}
+
+/** 把 `var a = {...};var b = {...}` 拆成对象表，单块坏了不影响其他块 */
+function parseCnVars(text: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const chunk of text.split(/\bvar\s+/)) {
+    const eq = chunk.indexOf('=')
+    if (eq < 0) continue
+    const name = chunk.slice(0, eq).trim()
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) continue
+    const body = chunk
+      .slice(eq + 1)
+      .trim()
+      .replace(/;$/, '')
+      .trim()
+    try {
+      out[name] = JSON.parse(body)
+    } catch {
+      /* 跳过这一块 */
     }
-    if (data.status !== 200 || !data.data?.forecast?.length) return null
+  }
+  return out
+}
 
-    const forecast = data.data.forecast
-    const today = forecast[0]
-    const humidity = Number.parseInt(data.data.shidu || '', 10)
-    const windMatch = today?.fl?.match(/\d+/)
-    const days: WeatherDay[] = forecast.slice(0, 3).map((day) => ({
-      date: day.ymd || '',
-      code: chinaTypeToCode(day.type),
-      tMax: parseChinaTemp(day.high),
-      tMin: parseChinaTemp(day.low),
-      condition: day.type
-    }))
+interface ChinaToday {
+  condition?: string
+  code: number
+  tMax: number
+  tMin: number
+  wind: number
+}
 
+/** 街道/镇只有当天的天气（dingzhi 接口，没有实况、没有预报） */
+async function loadChinaToday(code: string): Promise<ChinaToday | null> {
+  const bridge = window.workbench?.weather
+  if (!bridge) return null
+  try {
+    const res = await bridge.fetchToday(code)
+    if (!res.ok || !res.text) return null
+    const vars = parseCnVars(res.text)
+    // 变量名带编码后缀：var cityDZ101101111001={...}
+    const entry = Object.entries(vars).find(([name]) => name.startsWith('cityDZ'))
+    const info = (entry?.[1] as { weatherinfo?: Record<string, unknown> } | undefined)?.weatherinfo
+    if (!info) return null
+    const tMax = toInt(info.temp)
+    const tMin = toInt(info.tempn)
+    if (!tMax && !tMin) return null
     return {
-      place: {
-        ...place,
-        name: isUsablePlaceName(place.name)
-          ? place.name
-          : data.cityInfo?.city?.replace(/市$/, '') || place.name,
-        cityCode
-      },
-      temp: Number.parseInt(data.data.wendu || '', 10) || parseChinaTemp(today?.high),
-      feels: Number.parseInt(data.data.wendu || '', 10) || parseChinaTemp(today?.high),
-      humidity: Number.isFinite(humidity) ? humidity : 0,
-      wind: windMatch ? Number(windMatch[0]) : 0,
-      windUnit: 'level',
-      code: chinaTypeToCode(today?.type),
-      condition: today?.type,
-      quality: data.data.quality,
-      notice: today?.notice,
-      days,
-      updatedAt: Date.now()
+      condition: typeof info.weather === 'string' ? info.weather.trim() : undefined,
+      code: cnConditionCode(String(info.weathercode ?? '')),
+      tMax,
+      tMin,
+      wind: toInt(info.ws, -1)
     }
   } catch {
     return null
   }
+}
+
+function isoToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+async function loadChinaWeather(
+  place: WeatherPlace,
+  cityCode: string
+): Promise<WeatherSnapshot | null> {
+  const bridge = window.workbench?.weather
+  if (!bridge) return null
+
+  // 12 位是街道/镇：当天数据取它自己的，实况和未来几天只能取所属区县（前 9 位）
+  const township = cityCode.length === 12 ? await loadChinaToday(cityCode) : null
+  const countyCode = cityCode.length === 12 ? cityCode.slice(0, 9) : cityCode
+
+  const res = await bridge.fetchIndex(countyCode)
+  const vars = res.ok && res.text ? parseCnVars(res.text) : {}
+  const sk = (vars.dataSK ?? {}) as Record<string, unknown>
+  const dzInfo = ((vars.cityDZ as { weatherinfo?: Record<string, unknown> } | undefined)
+    ?.weatherinfo ?? {}) as Record<string, unknown>
+  const fcList = ((vars.fc as { f?: Array<Record<string, unknown>> } | undefined)?.f ??
+    []) as Array<Record<string, unknown>>
+
+  const days: WeatherDay[] = fcList.slice(0, 3).map((day) => ({
+    date: cnDateIso(String(day.fi ?? '')),
+    code: cnConditionCode(String(day.fa ?? '')),
+    tMax: toInt(day.fc),
+    tMin: toInt(day.fd),
+    condition: cnConditionText(String(day.fa ?? ''))
+  }))
+
+  // 今天这一天用乡镇自己的预报覆盖，后面的日子沿用区县
+  if (township) {
+    const today: WeatherDay = {
+      date: days[0]?.date || isoToday(),
+      code: township.code,
+      tMax: township.tMax || days[0]?.tMax || 0,
+      tMin: township.tMin || days[0]?.tMin || 0,
+      condition: township.condition
+    }
+    if (days.length) days[0] = today
+    else days.push(today)
+  }
+
+  if (!days.length && !sk.temp) return null
+
+  const hasCurrent = sk.temp !== undefined && sk.temp !== ''
+  const temp = hasCurrent ? toInt(sk.temp) : (days[0]?.tMax ?? 0)
+
+  const condition =
+    township?.condition ||
+    (typeof sk.weather === 'string' && sk.weather.trim()) ||
+    (days[0]?.condition as string | undefined) ||
+    (typeof dzInfo.weather === 'string' ? dzInfo.weather : undefined)
+
+  const code = township
+    ? township.code
+    : sk.weathercode
+      ? cnConditionCode(String(sk.weathercode))
+      : textToCode(condition)
+
+  const alarms = ((vars.alarmDZ as { w?: Array<Record<string, unknown>> } | undefined)?.w ??
+    []) as Array<Record<string, unknown>>
+  const alarm = alarms[0]
+  const alarmText =
+    alarm && (alarm.w5 || alarm.w7)
+      ? `${String(alarm.w5 ?? '')}${String(alarm.w7 ?? '')}预警`
+      : ''
+
+  return {
+    place: {
+      ...place,
+      name: isUsablePlaceName(place.name)
+        ? place.name
+        : String(sk.cityname ?? dzInfo.city ?? place.name ?? ''),
+      cityCode
+    },
+    temp,
+    // 官方接口不给体感温度，用实况温度顶上
+    feels: temp,
+    // 境外城市、街道/镇都没有 dataSK 实况，湿度/风速记 -1，界面据此隐藏
+    humidity: hasCurrent ? toInt(sk.SD) : -1,
+    wind: hasCurrent ? toInt(sk.WS) : township ? township.wind : -1,
+    windUnit: 'level',
+    code,
+    condition,
+    quality: hasCurrent ? aqiQuality(toInt(sk.aqi, Number.NaN)) : undefined,
+    notice: alarmText || undefined,
+    days,
+    updatedAt: Date.now()
+  }
+}
+
+/** 只有文字没有编码时（个别字段缺失）按关键字兜底 */
+function textToCode(text?: string): number {
+  const value = text ?? ''
+  if (value.includes('雷')) return 95
+  if (value.includes('雪')) return 71
+  if (value.includes('雨')) return 61
+  if (value.includes('雾') || value.includes('霾') || value.includes('沙')) return 45
+  if (value.includes('晴')) return 0
+  if (value.includes('云')) return 2
+  return 3
+}
+
+/** 国内城市搜索：返回的 ref 是 `城市码~省拼音~名字~英文名~上级区县~…~省份` */
+async function searchChinaWeather(query: string): Promise<WeatherPlace[]> {
+  const bridge = window.workbench?.weather
+  if (!bridge) return []
+  try {
+    const res = await bridge.search(query)
+    if (!res.ok || !res.text) return []
+    const body = res.text
+      .trim()
+      .replace(/^\(/, '')
+      .replace(/\)\s*$/, '')
+    const list = JSON.parse(body) as Array<{ ref?: string }>
+    if (!Array.isArray(list)) return []
+
+    const places: WeatherPlace[] = []
+    for (const item of list) {
+      const fields = (item?.ref ?? '').split('~')
+      const code = (fields[0] ?? '').trim()
+      const name = (fields[2] ?? '').trim()
+      // 9 位是市/区县，12 位是街道/镇；11 位的景点码取不到数据，跳过
+      if (!/^\d{9}(\d{3})?$/.test(code) || !isUsablePlaceName(name)) continue
+      const county = (fields[4] ?? '').trim()
+      const province = (fields[9] ?? '').trim()
+      // 乡镇用上级区县标注（同名街道很多），市区用省份标注
+      const suffix = code.length === 12 ? county || province : province
+      const label =
+        suffix && !name.includes(suffix) && suffix !== name ? `${name} · ${suffix}` : name
+      places.push({ name: label, lat: 0, lon: 0, cityCode: code })
+    }
+    return places.slice(0, 8)
+  } catch {
+    return []
+  }
+}
+
+/** 完全同名的排前面（搜「福田保税区」时别被「福田」挤到后面），其余保持原顺序 */
+function rankByQuery(places: WeatherPlace[], query: string): WeatherPlace[] {
+  const q = query.trim()
+  if (!q) return places
+  const rank = (name: string): number => {
+    const bare = name.replace(/ · .*$/, '')
+    return bare === q ? 0 : bare.startsWith(q) ? 1 : 2
+  }
+  return [...places].sort((a, b) => rank(a.name) - rank(b.name))
+}
+
+/** 名字 → 简体名 + 城市码：内置表优先，其次国内搜索 */
+async function canonicalChinaPlace(
+  name: string
+): Promise<{ name: string; cityCode?: string }> {
+  const local = findChinaPlace(name)
+  if (local) return { name: local.name, cityCode: local.cityCode }
+  if (!isUsablePlaceName(name)) return { name }
+  const hits = await searchChinaWeather(name.split(/[·,，\s]/)[0] ?? name)
+  const hit = hits[0]
+  if (!hit) return { name }
+  return { name: hit.name.replace(/ · .*$/, ''), cityCode: hit.cityCode }
+}
+
+/**
+ * 反查出来的名字常常是「城市 区县」（如「杭州 余杭区」），末尾那段如果能在国内
+ * 搜索里精确命中，就保留区县级精度；命中不了（繁体、境外、乡镇）就放弃。
+ */
+async function districtChinaPlace(name: string): Promise<WeatherPlace | undefined> {
+  const tokens = name.split(/[\s,，·]+/).filter(Boolean)
+  if (tokens.length < 2) return undefined
+  const token = tokens[tokens.length - 1]
+  if (!token || token.length < 2) return undefined
+  const hits = await searchChinaWeather(token)
+  const bare = token.replace(/市$|区$|县$/, '')
+  const hit = hits.find(
+    (item) => item.name.replace(/ · .*$/, '').replace(/市$|区$|县$/, '') === bare
+  )
+  return hit ? { ...hit, name: hit.name.replace(/ · .*$/, '') } : undefined
+}
+
+
+/** 搜索列表里用「名字 · 省份」区分同名地点，卡片上只要名字 */
+function shortPlaceName(name: string): string {
+  return name.split(' · ')[0]?.trim() || name
 }
 
 export async function loadWeather(force = false): Promise<WeatherSnapshot> {
@@ -659,10 +967,8 @@ export async function loadWeather(force = false): Promise<WeatherSnapshot> {
     pref.mode === 'manual' && pref.place
       ? pref.place
       : await resolvePlace(cached?.place)
-  const place = {
-    ...resolved,
-    cityCode: resolved.cityCode || findChinaCityCode(resolved.name)
-  }
+  const cityCode = resolved.cityCode || (await canonicalChinaPlace(resolved.name)).cityCode
+  const place: WeatherPlace = { ...resolved, name: shortPlaceName(resolved.name), cityCode }
 
   if (
     !force &&
@@ -673,10 +979,18 @@ export async function loadWeather(force = false): Promise<WeatherSnapshot> {
     return { ...cached, place }
   }
 
-  const china = await loadChinaCityWeather(place)
-  if (china) {
-    writeCache(china)
-    return china
+  if (cityCode) {
+    const china = await loadChinaWeather(place, cityCode)
+    if (china) {
+      writeCache(china)
+      return china
+    }
+  }
+
+  // 没有城市码（境外）或国内接口暂时不可用时，才退回 open-meteo
+  if (!hasCoords(place)) {
+    if (cached) return cached
+    throw new Error('天气请求失败')
   }
 
   const url = new URL('https://api.open-meteo.com/v1/forecast')
