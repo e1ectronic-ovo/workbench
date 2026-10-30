@@ -31,6 +31,8 @@ interface Win32Api {
   /** 直接给调用线程（主进程 UI 线程）换布局；窗口不在前台时也能生效 */
   ActivateKeyboardLayout: (hkl: bigint, flags: number) => bigint | number
   PostMessageW: (hwnd: bigint, msg: number, wParam: bigint, lParam: bigint) => boolean
+  /** 当前前台窗口 */
+  GetForegroundWindow: () => bigint | number
 }
 
 interface Target {
@@ -63,7 +65,8 @@ function loadWin32(): Promise<Win32Api | null> {
           ActivateKeyboardLayout: user32.func('void *ActivateKeyboardLayout(void *hkl, uint32_t Flags)'),
           PostMessageW: user32.func(
             'bool PostMessageW(void *hWnd, uint32_t Msg, uintptr_t wParam, intptr_t lParam)'
-          )
+          ),
+          GetForegroundWindow: user32.func('void *GetForegroundWindow()')
         } as unknown as Win32Api
       } catch {
         return null
@@ -250,6 +253,61 @@ async function restoreLayout(win: BrowserWindow | null): Promise<boolean> {
   return true
 }
 
+/** 等前台窗口从自己换成别人；一直没换（比如点了任务栏空白处）就返回 0n */
+async function waitForOtherForeground(api: Win32Api, self: bigint): Promise<bigint> {
+  for (let i = 0; i < 10; i++) {
+    await sleep(60)
+    try {
+      const foreground = BigInt(api.GetForegroundWindow())
+      if (foreground && foreground !== self) return foreground
+    } catch {
+      return 0n
+    }
+  }
+  return 0n
+}
+
+/**
+ * 切到别的应用时把它也切回用户原来的输入法。
+ *
+ * Windows 的输入语言在这台机器上是全局的：我们把窗口切到美式键盘后，
+ * 别的应用被激活时也会跟着变成英文，光还原自己的线程不够。这里在失焦后
+ * 把当前前台窗口也拨回去，用户 alt-tab 过去就是原来的输入法。
+ *
+ * 用轮询而不是固定延时：blur 事件到达时前台窗口往往还没换过来，睡死后
+ * 很可能捞到的还是自己（于是什么都不做，英文就留在别的应用里了）。
+ */
+async function restoreForeground(self: bigint, hkl: bigint): Promise<void> {
+  if (!hkl) return
+  const api = await loadWin32()
+  if (!api) return
+  try {
+    const foreground = await waitForOtherForeground(api, self)
+    if (!foreground) return
+
+    const pid = [0]
+    const threadId = api.GetWindowThreadProcessId(foreground, pid)
+    if (!threadId) return
+    // 前台线程已经是原布局就别动（用户在那个应用里本来就用这个输入法）
+    if (lowLanguage(BigInt(api.GetKeyboardLayout(threadId))) === lowLanguage(hkl)) return
+    // 跨进程投递布局切换；目标若是管理员权限窗口会被 UIPI 挡下，交给 catch
+    api.PostMessageW(foreground, WM_INPUTLANGCHANGEREQUEST, 0n, hkl)
+  } catch {
+    // 前台窗口正在销毁 / 无权限，忽略
+  }
+}
+
+/** 窗口的原生句柄（拿不到返回 0n） */
+function windowHandle(win: BrowserWindow): bigint {
+  try {
+    const handle = win.getNativeWindowHandle()
+    if (handle.length < 4) return 0n
+    return handle.length >= 8 ? handle.readBigUInt64LE(0) : BigInt(handle.readUInt32LE(0))
+  } catch {
+    return 0n
+  }
+}
+
 /**
  * 失焦就还原、回焦再屏蔽：别的应用要能用回用户自己的输入法。
  * 监听在第一次收到屏蔽请求时挂上（此时窗口已经创建）。
@@ -258,7 +316,12 @@ function wireWindow(win: BrowserWindow): void {
   if (wired.has(win)) return
   wired.add(win)
   win.on('blur', () => {
-    if (applied) void enqueue(() => restoreLayout(win))
+    if (!applied) return
+    const restore = previousLayout
+    const self = windowHandle(win)
+    void enqueue(() => restoreLayout(win)).then(() => {
+      if (restore) void restoreForeground(self, restore)
+    })
   })
   win.on('focus', () => {
     if (desired && !applied) void enqueue(() => blockLayout(win))
@@ -276,6 +339,7 @@ function wireWindow(win: BrowserWindow): void {
   win.on('close', () => {
     const target = activeTarget
     const restore = previousLayout
+    const self = windowHandle(win)
     stopGuard()
     stopRetry()
     applied = false
@@ -288,6 +352,8 @@ function wireWindow(win: BrowserWindow): void {
     } catch {
       // 窗口已经在销毁，忽略
     }
+    // 退出前顺手把可能被带成英文的前台窗口拨回去
+    void restoreForeground(self, restore)
   })
 }
 
