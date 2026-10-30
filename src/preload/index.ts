@@ -71,27 +71,31 @@ const api = {
     return () => ipcRenderer.removeListener('window:maximized', listener)
   },
 
-  syncReminder: (payload: {
-    enabled: boolean
-    fireAt: string
-    dateKey: string
-    firedDateKey?: string | null
-    title: string
-    body: string
-  }) =>
-    ipcRenderer.invoke('reminders:sync', payload) as Promise<{
+  syncReminder: (
+    payload: {
+      enabled: boolean
+      fireAt: string
+      dateKey: string
+      firedDateKey?: string | null
+      title: string
+      body: string
+    },
+    key?: string
+  ) =>
+    ipcRenderer.invoke('reminders:sync', payload, key) as Promise<{
       scheduled: boolean
       reason?: string
       fireAt?: string
     }>,
 
-  clearReminder: () => ipcRenderer.invoke('reminders:clear') as Promise<boolean>,
+  clearReminder: (key?: string) =>
+    ipcRenderer.invoke('reminders:clear', key) as Promise<boolean>,
 
   testReminder: (payload: { title?: string; body?: string }) =>
     ipcRenderer.invoke('reminders:test', payload) as Promise<boolean>,
 
-  onReminderFired: (cb: (payload: { dateKey: string }) => void) => {
-    const listener = (_: Electron.IpcRendererEvent, payload: { dateKey: string }) =>
+  onReminderFired: (cb: (payload: { key?: string; dateKey: string }) => void) => {
+    const listener = (_: Electron.IpcRendererEvent, payload: { key?: string; dateKey: string }) =>
       cb(payload)
     ipcRenderer.on('reminder:fired', listener)
     return () => ipcRenderer.removeListener('reminder:fired', listener)

@@ -56,17 +56,20 @@ export interface WorkbenchAPI {
   maximizeWindow: () => Promise<boolean>
   closeWindow: () => Promise<boolean>
   onMaximized: (cb: (maximized: boolean) => void) => () => void
-  syncReminder: (payload: {
-    enabled: boolean
-    fireAt: string
-    dateKey: string
-    firedDateKey?: string | null
-    title: string
-    body: string
-  }) => Promise<{ scheduled: boolean; reason?: string; fireAt?: string }>
-  clearReminder: () => Promise<boolean>
+  syncReminder: (
+    payload: {
+      enabled: boolean
+      fireAt: string
+      dateKey: string
+      firedDateKey?: string | null
+      title: string
+      body: string
+    },
+    key?: string
+  ) => Promise<{ scheduled: boolean; reason?: string; fireAt?: string }>
+  clearReminder: (key?: string) => Promise<boolean>
   testReminder: (payload: { title?: string; body?: string }) => Promise<boolean>
-  onReminderFired: (cb: (payload: { dateKey: string }) => void) => () => void
+  onReminderFired: (cb: (payload: { key?: string; dateKey: string }) => void) => () => void
   onGuestOpenTab: (cb: (payload: { url: string }) => void) => () => void
   /** 开关灯：把访客页切成真正的深色主题；返回是否成功 */
   setGuestDarkMode: (webContentsId: number, enabled: boolean) => Promise<boolean>

@@ -4,6 +4,7 @@ export interface ReminderPayload {
   enabled: boolean
   fireAt: string
   dateKey: string
+  /** 同一天已经提醒过就别再排（下班提醒用；便签触发后由渲染层自己清掉提醒时间） */
   firedDateKey?: string | null
   title: string
   body: string
@@ -15,7 +16,14 @@ export interface ReminderScheduleResult {
   fireAt?: string
 }
 
-let timer: ReturnType<typeof setTimeout> | null = null
+/**
+ * 提醒按 key 分开排：`attendance` 是下班提醒，便签用 `note:<id>`。
+ *
+ * 早先只有一个 timer，谁后同步谁把别人顶掉 —— 便签一设提醒，下班提醒就没了。
+ */
+const timers = new Map<string, ReturnType<typeof setTimeout>>()
+export const DEFAULT_REMINDER_KEY = 'attendance'
+
 let getMainWindow: () => BrowserWindow | null = () => null
 let getIconPath: () => string = () => ''
 
@@ -27,9 +35,10 @@ export function initReminders(deps: {
   getIconPath = deps.iconPath
 }
 
-function clearTimer() {
+function clearKey(key: string) {
+  const timer = timers.get(key)
   if (timer) clearTimeout(timer)
-  timer = null
+  timers.delete(key)
 }
 
 export function showDesktopNotification(title: string, body: string): boolean {
@@ -49,8 +58,11 @@ export function showDesktopNotification(title: string, body: string): boolean {
   }
 }
 
-export function scheduleReminder(payload: ReminderPayload): ReminderScheduleResult {
-  clearTimer()
+export function scheduleReminder(
+  payload: ReminderPayload,
+  key = DEFAULT_REMINDER_KEY
+): ReminderScheduleResult {
+  clearKey(key)
 
   if (!payload.enabled || !payload.fireAt) {
     return { scheduled: false, reason: 'disabled' }
@@ -68,18 +80,26 @@ export function scheduleReminder(payload: ReminderPayload): ReminderScheduleResu
   const delay = target.getTime() - Date.now()
   if (delay <= 0) return { scheduled: false, reason: 'passed' }
 
-  timer = setTimeout(() => {
-    timer = null
+  const timer = setTimeout(() => {
+    timers.delete(key)
     showDesktopNotification(payload.title, payload.body)
     const win = getMainWindow()
     if (win && !win.isDestroyed()) {
-      win.webContents.send('reminder:fired', { dateKey: payload.dateKey })
+      win.webContents.send('reminder:fired', { key, dateKey: payload.dateKey })
     }
   }, delay)
+  timer.unref?.()
+  timers.set(key, timer)
 
   return { scheduled: true, fireAt: target.toISOString() }
 }
 
-export function clearReminderSchedule() {
-  clearTimer()
+/** 不传 key 就清全部（退出应用时用） */
+export function clearReminderSchedule(key?: string) {
+  if (key === undefined) {
+    timers.forEach((timer) => clearTimeout(timer))
+    timers.clear()
+    return
+  }
+  clearKey(key)
 }

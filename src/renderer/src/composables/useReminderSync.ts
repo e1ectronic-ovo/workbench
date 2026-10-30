@@ -1,5 +1,5 @@
 import { onBeforeUnmount, onMounted, watch } from 'vue'
-import { useAttendanceStore } from '../stores/attendance'
+import { ATTENDANCE_REMINDER_KEY, useAttendanceStore } from '../stores/attendance'
 
 export function useReminderSync() {
   const attendance = useAttendanceStore()
@@ -30,7 +30,9 @@ export function useReminderSync() {
   onMounted(() => {
     attendance.refreshToday()
     void sync()
-    offFired = window.workbench.onReminderFired(({ dateKey }) => {
+    offFired = window.workbench.onReminderFired(({ key, dateKey }) => {
+      // 便签提醒也走同一条通道，别把它当成下班提醒记成"已触发"
+      if (key && key !== ATTENDANCE_REMINDER_KEY) return
       attendance.markReminderFired(dateKey)
       void sync()
     })

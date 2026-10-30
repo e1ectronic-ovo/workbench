@@ -541,12 +541,13 @@ function registerIpc(): void {
     return readCloseAction()
   })
 
-  ipcMain.handle('reminders:sync', (_event, payload: ReminderPayload) => {
-    return scheduleReminder(payload)
+  // key 用来分辨是谁的提醒（下班提醒 / 某条便签），不传就是下班提醒
+  ipcMain.handle('reminders:sync', (_event, payload: ReminderPayload, key?: string) => {
+    return scheduleReminder(payload, key)
   })
 
-  ipcMain.handle('reminders:clear', () => {
-    clearReminderSchedule()
+  ipcMain.handle('reminders:clear', (_event, key?: string) => {
+    clearReminderSchedule(key)
     return true
   })
 
