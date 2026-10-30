@@ -218,7 +218,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { GUEST_PARTITION, GUEST_USER_AGENT } from '../../../common/guest-session'
 import { createPageTab, tabLabel as formatTabLabel, type PageTab } from '../lib/page-tabs'
-import { isBuiltinModule, type ModuleConfig } from '../modules/registry'
+import { isBuiltinModule, shouldBlockIme, type ModuleConfig } from '../modules/registry'
 import { normalize, useModulesStore } from '../stores/modules'
 
 /** <webview> 元素暴露的运行时方法（Electron.WebviewTag 在 renderer 里不可见，这里局部声明用到的子集）。 */
@@ -292,6 +292,24 @@ const attachedTabs = new Set<string>()
 
 /** 每个网站窗口自己的灯，状态跟着模块走（重启后仍然记得） */
 const lightsOff = ref(store.states[props.module.id]?.lightsOff ?? false)
+
+/**
+ * 烬落这类纯键盘内置应用：激活时把窗口切到美式键盘，屏蔽系统输入法；
+ * 离开（切模块、回首页、卸载）时还原。
+ */
+const blockIme = computed(() => shouldBlockIme(props.module))
+let imeBlocked = false
+
+watch(
+  () => props.active,
+  (active) => {
+    if (isWebView2 || !blockIme.value) return
+    if (active === imeBlocked) return
+    imeBlocked = active
+    void window.workbench?.setImeBlocked?.(active)
+  },
+  { immediate: true }
+)
 
 const partition = GUEST_PARTITION
 const useragent = GUEST_USER_AGENT
@@ -650,6 +668,10 @@ onBeforeUnmount(() => {
   offOpenTab?.()
   webviewRefs.clear()
   attachedTabs.clear()
+  if (imeBlocked) {
+    imeBlocked = false
+    void window.workbench?.setImeBlocked?.(false)
+  }
 })
 
 defineExpose({ webviewEl: activeWv })

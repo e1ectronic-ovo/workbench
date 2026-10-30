@@ -31,10 +31,23 @@ export interface ModuleConfig {
 
 /** 内置应用清单：键对应 resources/apps/<键>/ 目录 */
 export const BUILTIN_APPS = {
-  greyfall: { name: '烬落', glyph: '烬', color: '#8B5CF6' }
+  greyfall: { name: '烬落', glyph: '烬', color: '#8B5CF6', blocksIme: true }
 } as const
 
 export type BuiltinAppId = keyof typeof BUILTIN_APPS
+
+/**
+ * 该模块激活时是否要屏蔽系统输入法。
+ * 烬落是纯键盘操作的，输入法会把方向 / 空格键截走并弹候选框。
+ */
+export function shouldBlockIme(m: Pick<ModuleConfig, 'kind' | 'url'>): boolean {
+  if (!isBuiltinModule(m)) return false
+  const url = m.url.toLowerCase()
+  return (Object.keys(BUILTIN_APPS) as BuiltinAppId[]).some((id) => {
+    const app: { blocksIme?: boolean } = BUILTIN_APPS[id]
+    return app.blocksIme === true && url.startsWith(`wbapp://${id}/`)
+  })
+}
 
 /** 内置应用的入口地址（专有协议，主进程负责把请求映射到 resources/apps） */
 export function builtinUrl(app: BuiltinAppId): string {

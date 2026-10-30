@@ -70,6 +70,8 @@ export interface WorkbenchAPI {
   onGuestOpenTab: (cb: (payload: { url: string }) => void) => () => void
   /** 开关灯：把访客页切成真正的深色主题；返回是否成功 */
   setGuestDarkMode: (webContentsId: number, enabled: boolean) => Promise<boolean>
+  /** 内置游戏里屏蔽系统输入法；返回是否成功 */
+  setImeBlocked: (blocked: boolean) => Promise<boolean>
   openExternal: (url: string) => Promise<void>
 
   /** 中国天气网取数（主进程代取：接口要求 Referer，且无 CORS 头） */

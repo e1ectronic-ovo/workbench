@@ -11,6 +11,7 @@ import {
   type ReminderPayload
 } from './reminders'
 import { ProxyService, registerProxyIpc } from './proxy'
+import { registerImeIpc } from './ime'
 import { destroyTray, setTrayActive, setupTray } from './tray'
 import { registerUpdateIpc, updateService } from './updater'
 import { registerWeatherIpc } from './weather'
@@ -790,6 +791,7 @@ app.whenReady().then(() => {
   })
 
   registerIpc()
+  registerImeIpc(() => mainWindow)
   registerProxyIpc(proxyService)
   registerUpdateIpc()
   registerWeatherIpc()

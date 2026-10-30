@@ -108,6 +108,10 @@ const api = {
   setGuestDarkMode: (webContentsId: number, enabled: boolean) =>
     ipcRenderer.invoke('guest:setDarkMode', { webContentsId, enabled }) as Promise<boolean>,
 
+  /** 内置游戏里屏蔽系统输入法（把窗口切到美式键盘，离开时还原） */
+  setImeBlocked: (blocked: boolean) =>
+    ipcRenderer.invoke('ime:setBlocked', blocked) as Promise<boolean>,
+
   openExternal: (url: string) => shell.openExternal(url),
 
   /** 天气数据统一走主进程取（中国天气网要 Referer，渲染进程改不了这个头） */
