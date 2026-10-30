@@ -5,13 +5,14 @@
       <span class="label">{{ label }}</span>
     </div>
     <div class="right">
-      <span class="url" v-if="url">{{ url }}</span>
+      <span class="url" :class="{ plain: isBuiltin }" v-if="url">{{ url }}</span>
     </div>
   </footer>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { isBuiltinModule } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
 
 const props = defineProps<{
@@ -34,9 +35,16 @@ const label = computed(() => {
   return store.active.name
 })
 
-const url = computed(() =>
-  props.view === 'module' ? store.activeState?.url || '' : ''
+const isBuiltin = computed(
+  () => props.view === 'module' && !!store.active && isBuiltinModule(store.active)
 )
+
+const url = computed(() => {
+  if (props.view !== 'module') return ''
+  // 内置应用不暴露内部协议地址，用一句状态说明代替
+  if (isBuiltin.value) return '内置应用 · 离线运行'
+  return store.activeState?.url || ''
+})
 </script>
 
 <style scoped>
@@ -86,5 +94,10 @@ const url = computed(() =>
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
+}
+
+.url.plain {
+  font-family: inherit;
+  font-size: 11px;
 }
 </style>

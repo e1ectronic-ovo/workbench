@@ -16,12 +16,14 @@ export interface ModuleState {
   audible?: boolean
   /** 该模块下任一标签被静音 */
   muted?: boolean
+  /** 网站窗口是否关灯（网页夜间模式），按模块持久化 */
+  lightsOff?: boolean
 }
 
 const MODULES_KEY = 'workbench.modules'
 const STATE_KEY = 'workbench.module-state'
 const MODULE_SEED_KEY = 'workbench.module-seed'
-const MODULE_SEED = 4
+const MODULE_SEED = 5
 
 function applyModuleSeeds(list: ModuleConfig[]): { list: ModuleConfig[]; changed: boolean } {
   const applied = Number(localStorage.getItem(MODULE_SEED_KEY) || '1')
@@ -40,6 +42,16 @@ function applyModuleSeeds(list: ModuleConfig[]): { list: ModuleConfig[]; changed
   // seed 4：安卓模拟器入口曾经作为内置模块出现，功能已整体移除。
   // 残留的 native 模块由 isValidModule 直接拦掉，这里不需要额外动作。
 
+  // seed 5：内置应用（页面打包在客户端里，走 wbapp:// 本地加载）随后续版本引入，
+  // 给老用户的已存列表补上。种子只跑一次，所以用户主动删掉后不会再被补回来。
+  if (applied < 5) {
+    const missing = DEFAULT_MODULES.filter((d) => !next.some((m) => m.id === d.id))
+    if (missing.length) {
+      next = [...next, ...structuredClone(missing)]
+      changed = true
+    }
+  }
+
   return { list: sortModules(next), changed }
 }
 
@@ -51,8 +63,8 @@ function isValidModule(m: unknown): m is ModuleConfig {
     typeof x.name === 'string' &&
     typeof x.url === 'string' &&
     typeof x.color === 'string' &&
-    // kind 只能是 'web'；历史数据里的 'native' 模块直接丢弃
-    (x.kind === undefined || x.kind === 'web') &&
+    // kind 只能是 'web' / 'builtin'；历史数据里的 'native' 模块直接丢弃
+    (x.kind === undefined || x.kind === 'web' || x.kind === 'builtin') &&
     (x.glyph === undefined || typeof x.glyph === 'string') &&
     (x.iconPath === undefined || typeof x.iconPath === 'string')
   )
@@ -279,6 +291,23 @@ export const useModulesStore = defineStore('modules', () => {
     persistStates()
   }
 
+  /** 被移除的内置应用（随包发布的那几个） */
+  const missingBuiltins = computed(() =>
+    DEFAULT_MODULES.filter((d) => !moduleList.value.some((m) => m.id === d.id))
+  )
+
+  /** 把某个内置应用加回侧栏（用户删掉之后的撤销入口） */
+  function restoreBuiltin(id: string) {
+    const target = DEFAULT_MODULES.find((d) => d.id === id)
+    if (!target) return
+    if (moduleList.value.some((m) => m.id === id)) return
+    const next = structuredClone(target)
+    moduleList.value = [...moduleList.value, next]
+    ensureState(next)
+    persistModules()
+    persistStates()
+  }
+
   return {
     moduleList,
     modules,
@@ -297,6 +326,8 @@ export const useModulesStore = defineStore('modules', () => {
     setModuleIcon,
     clearModuleIcon,
     resetModules,
+    missingBuiltins,
+    restoreBuiltin,
     moduleLabel
   }
 })

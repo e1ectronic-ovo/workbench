@@ -202,12 +202,69 @@ protocol.registerSchemesAsPrivileged([
       bypassCSP: true,
       stream: true
     }
+  },
+  // 内置应用（resources/apps/<应用名>/）走专有协议：离线读取打包内的静态页面，
+  // 同时给页面一个正常的 origin，localStorage 存档才不会退化成 file:// 的共享域。
+  {
+    scheme: 'wbapp',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true
+    }
   }
 ])
 
 function resourcesDir(): string {
   if (app.isPackaged) return process.resourcesPath
   return join(__dirname, '../../resources')
+}
+
+/**
+ * 内置应用根目录。每个应用是 resources/apps/<name>/ 下的一个静态站点，
+ * 由 wbapp://<name>/<path> 提供，与网络完全无关。
+ */
+function builtinAppsDir(): string {
+  return join(resourcesDir(), 'apps')
+}
+
+/** 把 wbapp:// 请求映射成内置目录里的文件，拒绝任何越界路径 */
+function serveBuiltinApp(request: Request): Response {
+  try {
+    const url = new URL(request.url)
+    const appName = decodeURIComponent(url.hostname)
+    const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html'
+
+    const bad = (s: string): boolean => !s || s.includes('..') || s.includes('\\')
+    if (bad(appName) || appName.includes('/') || /[<>:"|?*]/.test(appName)) {
+      return new Response('Bad request', { status: 400 })
+    }
+    if (rel.split('/').some((seg) => seg === '..' || seg === '')) {
+      return new Response('Bad request', { status: 400 })
+    }
+
+    const root = builtinAppsDir()
+    const file = join(root, appName, rel)
+    if (!file.startsWith(root)) return new Response('Forbidden', { status: 403 })
+    if (!existsSync(file)) return new Response('Not found', { status: 404 })
+
+    return new Response(readFileSync(file), {
+      headers: {
+        'Content-Type': mimeFor(file),
+        // 应用是随包发布的，内容不会中途变化，允许缓存但每次都校验
+        'Cache-Control': 'no-cache'
+      }
+    })
+  } catch {
+    return new Response('Error', { status: 500 })
+  }
+}
+
+/** 内置应用要在访客分区（webview 用的 persist:guest）和默认分区上都注册 */
+function registerBuiltinAppProtocol(ses: Electron.Session): void {
+  ses.protocol.handle('wbapp', serveBuiltinApp)
 }
 
 function appIconPath(): string {
@@ -494,6 +551,32 @@ function registerIpc(): void {
 
 function mimeFor(file: string): string {
   switch (extname(file).toLowerCase()) {
+    case '.html':
+    case '.htm':
+      return 'text/html; charset=utf-8'
+    case '.js':
+    case '.mjs':
+      return 'text/javascript; charset=utf-8'
+    case '.css':
+      return 'text/css; charset=utf-8'
+    case '.json':
+      return 'application/json; charset=utf-8'
+    case '.txt':
+      return 'text/plain; charset=utf-8'
+    case '.woff2':
+      return 'font/woff2'
+    case '.woff':
+      return 'font/woff'
+    case '.ttf':
+      return 'font/ttf'
+    case '.mp3':
+      return 'audio/mpeg'
+    case '.ogg':
+      return 'audio/ogg'
+    case '.wav':
+      return 'audio/wav'
+    case '.mp4':
+      return 'video/mp4'
     case '.png':
       return 'image/png'
     case '.jpg':
@@ -514,7 +597,14 @@ function mimeFor(file: string): string {
 
 /** 只允许网页导航。bitbrowser: 等自定义协议会让 Windows 弹出「需要新应用打开此链接」。 */
 function isWebNavigation(url: string): boolean {
-  return /^https?:/i.test(url) || /^about:/i.test(url) || /^file:/i.test(url) || /^devtools:/i.test(url)
+  return (
+    /^https?:/i.test(url) ||
+    /^about:/i.test(url) ||
+    /^file:/i.test(url) ||
+    /^devtools:/i.test(url) ||
+    // 内置应用走自己的协议，属于站内导航，不能按「外部协议」拦掉
+    /^wbapp:/i.test(url)
+  )
 }
 
 function blockExternalProtocol(event: Electron.Event, url: string) {
@@ -584,6 +674,8 @@ function configureGuestSession(): void {
   ses.setUserAgent(GUEST_USER_AGENT)
   allowGeolocation(ses)
   allowGeolocation(session.defaultSession)
+  // 内置应用同样要在访客分区可用：模块 webview 全部跑在 persist:guest 上
+  registerBuiltinAppProtocol(ses)
 }
 
 app.whenReady().then(() => {
@@ -612,6 +704,9 @@ app.whenReady().then(() => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.workbench.app')
   }
+
+  // 内置应用：默认分区也注册一份，方便主界面直接引用（截图、预览等场景）
+  registerBuiltinAppProtocol(session.defaultSession)
 
   initReminders({
     getMainWindow: () => mainWindow,

@@ -2,23 +2,66 @@
   <section class="workspace">
     <header class="mac-toolbar workspace-toolbar">
       <div class="mac-toolbar__cluster">
-        <button type="button" class="mac-icon-btn" @click="back" :disabled="!canBack" title="后退">
+        <button v-if="!isBuiltin" type="button" class="mac-icon-btn" @click="back" :disabled="!canBack" title="后退">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
           </svg>
         </button>
-        <button type="button" class="mac-icon-btn" @click="forward" :disabled="!canForward" title="前进">
+        <button v-if="!isBuiltin" type="button" class="mac-icon-btn" @click="forward" :disabled="!canForward" title="前进">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
           </svg>
         </button>
-        <button type="button" class="mac-icon-btn" @click="goHome" :title="`回到首页 (${props.module.url})`">
+        <button type="button" class="mac-icon-btn" @click="goHome" :title="isBuiltin ? '重新开始' : `回到首页 (${props.module.url})`">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 11.2 12 4.5l8 6.7" /><path d="M7 10.5V19h10v-8.5" />
           </svg>
         </button>
         <button
-          v-if="isWebView2"
+          v-if="!isBuiltin"
+          type="button"
+          class="mac-icon-btn lights-toggle"
+          :class="{ on: lightsOff }"
+          :title="lightsOff ? '开灯（恢复网页亮度）' : '关灯（网页夜间模式）'"
+          :aria-pressed="lightsOff"
+          aria-label="开关灯"
+          @click="toggleLights"
+        >
+          <svg
+            v-if="!lightsOff"
+            viewBox="0 0 24 24"
+            width="15"
+            height="15"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M9 18h6" /><path d="M10 22h4" />
+            <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V19h6v-2.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z" />
+            <path d="M12 6v3" />
+            <path d="M3.5 8.5h-1" /><path d="M21.5 8.5h-1" />
+            <path d="m5.2 3.7-.7-.7" /><path d="m18.8 3.7.7-.7" />
+          </svg>
+          <svg
+            v-else
+            viewBox="0 0 24 24"
+            width="15"
+            height="15"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M9 18h6" /><path d="M10 22h4" />
+            <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V19h6v-2.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z" />
+            <path d="M12 6v3" /><path d="m4 4 16 16" />
+          </svg>
+        </button>
+        <button
+          v-if="isWebView2 && !isBuiltin"
           type="button"
           class="mac-icon-btn"
           title="在系统浏览器中打开（iframe 被站点拒绝内嵌时用这个）"
@@ -30,6 +73,7 @@
         </button>
       </div>
       <button
+        v-if="!isBuiltin"
         type="button"
         class="mac-icon-btn url-toggle"
         :class="{ on: urlBarOpen }"
@@ -42,7 +86,7 @@
       </button>
     </header>
 
-    <div class="tabbar" role="tablist" aria-label="页面标签">
+    <div v-if="!isBuiltin" class="tabbar" role="tablist" aria-label="页面标签">
       <button
         v-for="tab in tabs"
         :key="tab.id"
@@ -155,6 +199,7 @@
           :src="tab.url"
           :title="tabLabel(tab)"
           class="wv"
+          :class="{ 'wv--lights-off': lightsOff }"
           referrerpolicy="no-referrer"
           allow="clipboard-read; clipboard-write; fullscreen; autoplay; encrypted-media"
           @load="onFrameLoad(tab.id)"
@@ -174,7 +219,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { GUEST_PARTITION, GUEST_USER_AGENT } from '../../../common/guest-session'
 import { createPageTab, tabLabel as formatTabLabel, type PageTab } from '../lib/page-tabs'
-import type { ModuleConfig } from '../modules/registry'
+import { isBuiltinModule, type ModuleConfig } from '../modules/registry'
 import { normalize, useModulesStore } from '../stores/modules'
 
 /** <webview> 元素暴露的运行时方法（Electron.WebviewTag 在 renderer 里不可见，这里局部声明用到的子集）。 */
@@ -189,6 +234,8 @@ interface WebviewEl extends HTMLElement {
   isLoadingMainFrame?(): boolean
   isCurrentlyAudible?(): boolean
   setAudioMuted?(muted: boolean): void
+  insertCSS(css: string): Promise<string>
+  removeInsertedCSS(key: string): Promise<void>
 }
 
 const props = defineProps<{
@@ -198,6 +245,12 @@ const props = defineProps<{
 }>()
 
 const store = useModulesStore()
+
+/**
+ * 内置应用（resources/apps 里的本地页面，走 wbapp:// 协议）：
+ * 只有一页、没有站外导航，工具栏退化成「重新开始 / 刷新」，标签栏与地址栏都不需要。
+ */
+const isBuiltin = computed(() => isBuiltinModule(props.module))
 
 /**
  * WPF 外壳（WebView2）不支持 Electron 的 <webview> 标签，这里降级成 iframe。
@@ -237,6 +290,27 @@ const urlInput = ref<HTMLInputElement | null>(null)
 
 const webviewRefs = new Map<string, WebviewEl>()
 const attachedTabs = new Set<string>()
+
+/** 每个网站窗口自己的灯，状态跟着模块走（重启后仍然记得） */
+const lightsOff = ref(store.states[props.module.id]?.lightsOff ?? false)
+const lightsCssKeys = new Map<string, string>()
+const lightsPending = new Set<string>()
+
+/**
+ * 关灯样式：在页面根节点上盖一层暗色遮罩。
+ * 不做反色，照片、视频和品牌色都保持原样，只是把整页亮度压下来，
+ * 像把房间的灯关掉，而不是给网页套一层滤镜。
+ */
+const LIGHTS_OFF_CSS = `
+html::after {
+  content: "" !important;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+}
+`
 
 const partition = GUEST_PARTITION
 const useragent = GUEST_USER_AGENT
@@ -312,9 +386,68 @@ function syncAudio(tabId: string, el: WebviewEl) {
   syncModuleAudio()
 }
 
+/** 把当前灯的开关状态落到某个标签的网页上 */
+async function applyLights(tabId: string, el: WebviewEl, enabled = lightsOff.value): Promise<void> {
+  if (isWebView2) return
+
+  if (!enabled) {
+    const key = lightsCssKeys.get(tabId)
+    if (!key) return
+    lightsCssKeys.delete(tabId)
+    try {
+      await el.removeInsertedCSS(key)
+    } catch {
+      /* 页面已经跳走 / 标签已关闭 */
+    }
+    return
+  }
+
+  // 同一个标签同一时间只插入一次，避免 attach 和 dom-ready 撞在一起叠两层遮罩
+  if (lightsCssKeys.has(tabId) || lightsPending.has(tabId)) return
+  lightsPending.add(tabId)
+  try {
+    const key = await el.insertCSS(LIGHTS_OFF_CSS)
+    // 插入是异步的：期间用户可能已经开灯，或者标签已经被关掉
+    if (!lightsOff.value || webviewRefs.get(tabId) !== el) {
+      try {
+        await el.removeInsertedCSS(key)
+      } catch {
+        /* ignore */
+      }
+      return
+    }
+    lightsCssKeys.set(tabId, key)
+  } catch {
+    /* 页面还没 dom-ready，等 dom-ready 再试 */
+  } finally {
+    lightsPending.delete(tabId)
+  }
+}
+
+function toggleLights() {
+  lightsOff.value = !lightsOff.value
+  store.update(props.module.id, { lightsOff: lightsOff.value })
+  for (const [tabId, el] of webviewRefs) void applyLights(tabId, el)
+}
+
 function attachWebview(tabId: string, el: WebviewEl) {
   if (attachedTabs.has(tabId)) return
   attachedTabs.add(tabId)
+
+  // 每次主文档加载完都重新插一次：insertCSS 不会跨导航保留。
+  // 顺手把旧 key 清掉，避免个别情况下旧样式还活着、叠出两层遮罩。
+  el.addEventListener('dom-ready', () => {
+    const oldKey = lightsCssKeys.get(tabId)
+    lightsCssKeys.delete(tabId)
+    if (!oldKey) {
+      void applyLights(tabId, el)
+      return
+    }
+    void el
+      .removeInsertedCSS(oldKey)
+      .catch(() => undefined)
+      .then(() => applyLights(tabId, el))
+  })
 
   el.addEventListener('did-start-loading', () => {
     try {
@@ -362,6 +495,9 @@ function attachWebview(tabId: string, el: WebviewEl) {
       syncModuleState()
     }
   })
+
+  // 已经加载完的页面不会补发 dom-ready，挂载时先补一次
+  void applyLights(tabId, el)
 }
 
 function setWebviewRef(tabId: string, el: HTMLElement | null) {
@@ -401,6 +537,7 @@ function closeTab(id: string) {
 
   webviewRefs.delete(id)
   attachedTabs.delete(id)
+  lightsCssKeys.delete(id)
   const nextTabs = tabs.value.filter((t) => t.id !== id)
   tabs.value = nextTabs
 
@@ -513,6 +650,8 @@ function onKey(e: KeyboardEvent) {
   const ctrl = e.ctrlKey || e.metaKey
   if (!ctrl) return
   if (e.key.toLowerCase() === 'l') {
+    // 内置应用没有地址栏
+    if (isBuiltin.value) return
     e.preventDefault()
     toggleUrlBar()
   }
@@ -534,6 +673,10 @@ watch(
     if (!active) return
     syncNav()
     syncModuleState()
+    // 内置应用是键盘操作型（游戏），切进来就把焦点交给页面，免得用户先点一下
+    if (isBuiltin.value) {
+      nextTick(() => activeWv()?.focus())
+    }
   },
   { immediate: true }
 )
@@ -551,6 +694,8 @@ onBeforeUnmount(() => {
   offOpenTab?.()
   webviewRefs.clear()
   attachedTabs.clear()
+  lightsCssKeys.clear()
+  lightsPending.clear()
 })
 
 defineExpose({ webviewEl: activeWv })
@@ -681,7 +826,8 @@ defineExpose({ webviewEl: activeWv })
   }
 }
 
-.url-toggle.on {
+.url-toggle.on,
+.lights-toggle.on {
   background: var(--surface-active);
   color: var(--accent);
 }
@@ -750,6 +896,12 @@ defineExpose({ webviewEl: activeWv })
   border: 0;
   display: flex;
   background: #fff;
+}
+
+/* WebView2 壳走 iframe，拿不到 insertCSS，只能直接压暗 iframe 本身 */
+.wv--lights-off {
+  filter: brightness(0.45) saturate(0.92);
+  transition: filter 180ms var(--ease);
 }
 
 .loading-bar {

@@ -17,37 +17,40 @@
         <span v-if="showLabels" class="nav-label">首页</span>
       </button>
 
-      <p v-if="showLabels && modules.length" class="sidebar-section">网站</p>
+      <!-- 内置应用（随客户端发布）与用户添加的网站分开展示，语义不同 -->
+      <template v-for="group in groups" :key="group.key">
+        <p v-if="showLabels" class="sidebar-section">{{ group.label }}</p>
 
-      <button
-        v-for="m in modules"
-        :key="m.id"
-        type="button"
-        class="nav-item"
-        :class="{ active: view === 'module' && activeId === m.id }"
-        :title="m.name"
-        @click="$emit('select', m.id)"
-      >
-        <span class="nav-icon module">
-          <ModuleIcon :module="m" variant="nav" />
-        </span>
-        <span v-if="showLabels" class="nav-label">{{ m.name }}</span>
-        <span
-          v-if="audioBadges[m.id]"
-          class="nav-audio"
-          :class="{ 'is-muted': audioBadges[m.id] === 'muted' }"
-          :title="audioBadges[m.id] === 'muted' ? `${m.name}：已静音` : `${m.name}：正在播放声音`"
+        <button
+          v-for="m in group.items"
+          :key="m.id"
+          type="button"
+          class="nav-item"
+          :class="{ active: view === 'module' && activeId === m.id }"
+          :title="m.name"
+          @click="$emit('select', m.id)"
         >
-          <svg v-if="audioBadges[m.id] === 'muted'" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M11 5 6 9H3v6h3l5 4V5z" />
-            <path d="m17 9 4 5M21 9l-4 5" />
-          </svg>
-          <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M11 5 6 9H3v6h3l5 4V5z" />
-            <path d="M16 9a4 4 0 0 1 0 6" />
-          </svg>
-        </span>
-      </button>
+          <span class="nav-icon module">
+            <ModuleIcon :module="m" variant="nav" />
+          </span>
+          <span v-if="showLabels" class="nav-label">{{ m.name }}</span>
+          <span
+            v-if="audioBadges[m.id]"
+            class="nav-audio"
+            :class="{ 'is-muted': audioBadges[m.id] === 'muted' }"
+            :title="audioBadges[m.id] === 'muted' ? `${m.name}：已静音` : `${m.name}：正在播放声音`"
+          >
+            <svg v-if="audioBadges[m.id] === 'muted'" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 5 6 9H3v6h3l5 4V5z" />
+              <path d="m17 9 4 5M21 9l-4 5" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 5 6 9H3v6h3l5 4V5z" />
+              <path d="M16 9a4 4 0 0 1 0 6" />
+            </svg>
+          </span>
+        </button>
+      </template>
 
     </nav>
 
@@ -72,7 +75,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ModuleConfig } from '../modules/registry'
+import { isBuiltinModule, type ModuleConfig } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
 import { useSettingsStore } from '../stores/settings'
 import ModuleIcon from './ModuleIcon.vue'
@@ -91,6 +94,14 @@ defineEmits<{
 
 const settings = useSettingsStore()
 const modulesStore = useModulesStore()
+
+/** 内置应用和网站分开列，空分组自动隐藏 */
+const groups = computed(() =>
+  [
+    { key: 'app', label: '应用', items: props.modules.filter(isBuiltinModule) },
+    { key: 'web', label: '网站', items: props.modules.filter((m) => !isBuiltinModule(m)) }
+  ].filter((g) => g.items.length > 0)
+)
 
 /** 后台模块发声时的角标：不看标签栏也能知道是谁在响 */
 const audioBadges = computed(() => {

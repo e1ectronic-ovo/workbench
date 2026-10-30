@@ -8,6 +8,7 @@
       class="img"
       @error="onError"
     />
+    <span v-else-if="isBuiltin" class="glyph">{{ glyph }}</span>
     <svg
       v-else
       class="fallback"
@@ -30,7 +31,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { buildFaviconCandidates } from '../lib/favicon'
-import type { ModuleConfig } from '../modules/registry'
+import { isBuiltinModule, type ModuleConfig } from '../modules/registry'
 
 const props = withDefaults(
   defineProps<{
@@ -44,7 +45,12 @@ const props = withDefaults(
 const candidateIndex = ref(0)
 const iconPathUrl = ref<string | null>(null)
 
+/** 内置应用没有可抓的 favicon，也不该为此发起任何网络请求：直接用文字图标 */
+const isBuiltin = computed(() => isBuiltinModule(props.module))
+const glyph = computed(() => (props.module.glyph || props.module.name).trim().slice(0, 1) || '·')
+
 const candidates = computed(() => {
+  if (isBuiltin.value) return iconPathUrl.value ? [iconPathUrl.value] : []
   const list: string[] = []
   if (iconPathUrl.value) list.push(iconPathUrl.value)
   list.push(...buildFaviconCandidates(props.module.url))
@@ -119,6 +125,20 @@ defineExpose({ hasImage: computed(() => showImage.value) })
   height: 72%;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* 内置应用的文字图标（如「烬」） */
+.glyph {
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 600;
+  color: currentColor;
+  user-select: none;
+}
+
+.module-icon.nav .glyph {
+  font-size: 11px;
+  opacity: 0.9;
 }
 
 .module-icon.nav .fallback {

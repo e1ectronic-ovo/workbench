@@ -47,6 +47,13 @@
         ]
       },
       {
+        "from": "resources/apps",
+        "to": "apps",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "resources/core",
         "to": "core",
         "filter": [

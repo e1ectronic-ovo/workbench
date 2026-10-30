@@ -21,7 +21,7 @@
       <!-- 网站 -->
       <div v-if="tab === 'modules'" class="tab-pane">
         <div class="pane-toolbar">
-          <p class="pane-hint">侧栏显示的模块：每个模块用一个内嵌浏览器打开一个站点。</p>
+          <p class="pane-hint">侧栏显示的模块：网站用一个内嵌浏览器打开，内置应用直接从客户端本地加载，不联网。</p>
           <div class="pane-actions">
             <button class="mac-btn mac-btn--primary" type="button" @click="openCreate">添加网站</button>
           </div>
@@ -61,6 +61,24 @@
 
           <div v-if="modulesStore.modules.length === 0" class="mac-row mac-empty">
             还没有网站。点击「添加网站」开始配置。
+          </div>
+
+          <!-- 内置应用被删掉后可以从这里加回来 -->
+          <div v-for="b in modulesStore.missingBuiltins" :key="b.id" class="mac-row mac-row--dim">
+            <div class="mac-row__main">
+              <span class="mac-icon-well" :style="{ '--brand': b.color }">
+                <ModuleIcon :module="b" variant="list" />
+              </span>
+              <div class="mac-row__text">
+                <div class="mac-row__title">{{ b.name }}</div>
+                <div class="mac-row__sub">内置应用 · 已移除</div>
+              </div>
+            </div>
+            <div class="mac-row__actions">
+              <button class="mac-btn mac-btn--restore" type="button" @click="modulesStore.restoreBuiltin(b.id)">
+                恢复
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -453,7 +471,14 @@
 
         <label class="mac-field">
           <span>网址</span>
-          <input v-model="form.url" required placeholder="https://example.com" spellcheck="false" />
+          <input
+            v-model="form.url"
+            required
+            placeholder="https://example.com"
+            spellcheck="false"
+            :readonly="editingBuiltin"
+          />
+          <small v-if="editingBuiltin" class="field-note">内置应用，随客户端发布，地址不可修改。</small>
         </label>
 
         <label class="mac-field color-field">
@@ -489,11 +514,20 @@
     <!-- 删除确认 -->
     <div v-if="pendingRemove" class="mac-sheet-backdrop" @click.self="pendingRemove = null">
       <div class="mac-sheet narrow">
-        <h2 class="mac-sheet__title">删除网站</h2>
-        <p class="confirm-text">确定删除「{{ pendingRemove.name }}」？此操作不会影响网站账号，但会移除本地配置。</p>
+        <h2 class="mac-sheet__title">{{ pendingRemoveBuiltin ? '移除内置应用' : '删除网站' }}</h2>
+        <p class="confirm-text">
+          <template v-if="pendingRemoveBuiltin">
+            确定移除「{{ pendingRemove.name }}」？它随客户端发布，之后可以在模块列表底部点「恢复」加回来。
+          </template>
+          <template v-else>
+            确定删除「{{ pendingRemove.name }}」？此操作不会影响网站账号，但会移除本地配置。
+          </template>
+        </p>
         <div class="dialog-actions">
           <button class="mac-btn mac-btn--ghost" type="button" @click="pendingRemove = null">取消</button>
-          <button class="mac-btn mac-btn--danger" type="button" :disabled="removing" @click="confirmRemove">删除</button>
+          <button class="mac-btn mac-btn--danger" type="button" :disabled="removing" @click="confirmRemove">
+            {{ pendingRemoveBuiltin ? '移除' : '删除' }}
+          </button>
         </div>
       </div>
     </div>
@@ -542,7 +576,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { CLOSE_ACTION_LABELS, type CloseAction } from '../../../common/window'
-import { PRESET_COLORS, moduleSubtitle, type ModuleConfig } from '../modules/registry'
+import { PRESET_COLORS, isBuiltinModule, moduleSubtitle, type ModuleConfig } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
 import { useProxyStore } from '../stores/proxy'
 import { formatSubscriptionRemaining } from '../lib/proxy-format'
@@ -824,6 +858,8 @@ const accentPresets = [
 
 const dialogOpen = ref(false)
 const editingId = ref<string | null>(null)
+/** 正在编辑的是随包发布的内置应用：网址只读 */
+const editingBuiltin = ref(false)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({
@@ -833,6 +869,9 @@ const form = reactive({
 })
 
 const pendingRemove = ref<ModuleConfig | null>(null)
+const pendingRemoveBuiltin = computed(
+  () => !!pendingRemove.value && isBuiltinModule(pendingRemove.value)
+)
 const removing = ref(false)
 
 onMounted(async () => {
@@ -896,6 +935,7 @@ function resetForm() {
 
 function openCreate() {
   editingId.value = null
+  editingBuiltin.value = false
   resetForm()
   formError.value = ''
   dialogOpen.value = true
@@ -903,6 +943,7 @@ function openCreate() {
 
 function openEdit(m: ModuleConfig) {
   editingId.value = m.id
+  editingBuiltin.value = isBuiltinModule(m)
   resetForm()
   form.name = m.name
   form.url = m.url
@@ -933,8 +974,9 @@ async function onSave() {
     if (id) {
       modulesStore.updateModule(id, {
         name: form.name,
-        url: form.url,
-        color: form.color
+        color: form.color,
+        // 内置应用的地址由客户端决定，不跟随表单
+        ...(editingBuiltin.value ? {} : { url: form.url })
       })
     } else {
       const created = modulesStore.addModule({
@@ -1345,6 +1387,28 @@ async function confirmRemove() {
   color: var(--text-muted);
   font-size: var(--text-xs);
   line-height: 1.5;
+}
+
+/* 已移除的内置应用：整行压暗，只留「恢复」 */
+.mac-row--dim {
+  opacity: 0.75;
+}
+
+.mac-btn--restore {
+  height: 26px;
+  padding: 0 12px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.mac-btn--restore:hover {
+  color: var(--text);
+  border-color: var(--border-focus);
 }
 
 </style>

@@ -342,6 +342,20 @@
 
 .mac-field input:focus { border-color: var(--border-focus); }
 
+/* 只读字段（内置应用的地址由客户端决定，不允许改） */
+.mac-field input[readonly] {
+  color: var(--text-secondary);
+  cursor: default;
+  opacity: 0.8;
+}
+
+.field-note {
+  color: var(--text-tertiary, var(--text-secondary));
+  font-size: var(--text-xs, 11px);
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
 /* ── Toggle row (inside mac-group) ── */
 
 .mac-toggle {
