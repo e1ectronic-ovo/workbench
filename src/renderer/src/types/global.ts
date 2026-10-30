@@ -68,6 +68,8 @@ export interface WorkbenchAPI {
   testReminder: (payload: { title?: string; body?: string }) => Promise<boolean>
   onReminderFired: (cb: (payload: { dateKey: string }) => void) => () => void
   onGuestOpenTab: (cb: (payload: { url: string }) => void) => () => void
+  /** 开关灯：把访客页切成真正的深色主题；返回是否成功 */
+  setGuestDarkMode: (webContentsId: number, enabled: boolean) => Promise<boolean>
   openExternal: (url: string) => Promise<void>
 
   /** 中国天气网取数（主进程代取：接口要求 Referer，且无 CORS 头） */

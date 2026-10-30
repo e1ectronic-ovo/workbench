@@ -104,6 +104,10 @@ const api = {
     return () => ipcRenderer.removeListener('guest:open-tab', listener)
   },
 
+  /** 开关灯：让主进程把访客页切成真正的深色主题（CDP，不是蒙版） */
+  setGuestDarkMode: (webContentsId: number, enabled: boolean) =>
+    ipcRenderer.invoke('guest:setDarkMode', { webContentsId, enabled }) as Promise<boolean>,
+
   openExternal: (url: string) => shell.openExternal(url),
 
   /** 天气数据统一走主进程取（中国天气网要 Referer，渲染进程改不了这个头） */

@@ -18,11 +18,11 @@
           </svg>
         </button>
         <button
-          v-if="!isBuiltin"
+          v-if="!isBuiltin && !isWebView2"
           type="button"
           class="mac-icon-btn lights-toggle"
           :class="{ on: lightsOff }"
-          :title="lightsOff ? '开灯（恢复网页亮度）' : '关灯（网页夜间模式）'"
+          :title="lightsOff ? '开灯（恢复网页原主题）' : '关灯（网页切换为深色主题）'"
           :aria-pressed="lightsOff"
           aria-label="开关灯"
           @click="toggleLights"
@@ -199,7 +199,6 @@
           :src="tab.url"
           :title="tabLabel(tab)"
           class="wv"
-          :class="{ 'wv--lights-off': lightsOff }"
           referrerpolicy="no-referrer"
           allow="clipboard-read; clipboard-write; fullscreen; autoplay; encrypted-media"
           @load="onFrameLoad(tab.id)"
@@ -234,8 +233,8 @@ interface WebviewEl extends HTMLElement {
   isLoadingMainFrame?(): boolean
   isCurrentlyAudible?(): boolean
   setAudioMuted?(muted: boolean): void
-  insertCSS(css: string): Promise<string>
-  removeInsertedCSS(key: string): Promise<void>
+  /** <webview> 挂上访客进程后才能取到；导航过程中可能抛错 */
+  getWebContentsId(): number
 }
 
 const props = defineProps<{
@@ -293,24 +292,6 @@ const attachedTabs = new Set<string>()
 
 /** 每个网站窗口自己的灯，状态跟着模块走（重启后仍然记得） */
 const lightsOff = ref(store.states[props.module.id]?.lightsOff ?? false)
-const lightsCssKeys = new Map<string, string>()
-const lightsPending = new Set<string>()
-
-/**
- * 关灯样式：在页面根节点上盖一层暗色遮罩。
- * 不做反色，照片、视频和品牌色都保持原样，只是把整页亮度压下来，
- * 像把房间的灯关掉，而不是给网页套一层滤镜。
- */
-const LIGHTS_OFF_CSS = `
-html::after {
-  content: "" !important;
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 2147483647 !important;
-  pointer-events: none !important;
-  background: rgba(0, 0, 0, 0.55) !important;
-}
-`
 
 const partition = GUEST_PARTITION
 const useragent = GUEST_USER_AGENT
@@ -386,67 +367,43 @@ function syncAudio(tabId: string, el: WebviewEl) {
   syncModuleAudio()
 }
 
-/** 把当前灯的开关状态落到某个标签的网页上 */
-async function applyLights(tabId: string, el: WebviewEl, enabled = lightsOff.value): Promise<void> {
+/**
+ * 开关灯：让主进程通过 CDP 把该标签的页面换成深色主题。
+ * 先让站点自己的 prefers-color-scheme 深色样式生效，站点没写深色样式时
+ * 由 Chromium 自动压暗背景、提亮文字（图片保持原样），不是盖一层半透明遮罩。
+ */
+async function applyLights(el: WebviewEl, enabled = lightsOff.value): Promise<void> {
   if (isWebView2) return
 
-  if (!enabled) {
-    const key = lightsCssKeys.get(tabId)
-    if (!key) return
-    lightsCssKeys.delete(tabId)
-    try {
-      await el.removeInsertedCSS(key)
-    } catch {
-      /* 页面已经跳走 / 标签已关闭 */
-    }
+  let id: number
+  try {
+    id = el.getWebContentsId()
+  } catch {
+    // 访客进程还没挂上，等 dom-ready 再来
     return
   }
+  if (!id) return
 
-  // 同一个标签同一时间只插入一次，避免 attach 和 dom-ready 撞在一起叠两层遮罩
-  if (lightsCssKeys.has(tabId) || lightsPending.has(tabId)) return
-  lightsPending.add(tabId)
   try {
-    const key = await el.insertCSS(LIGHTS_OFF_CSS)
-    // 插入是异步的：期间用户可能已经开灯，或者标签已经被关掉
-    if (!lightsOff.value || webviewRefs.get(tabId) !== el) {
-      try {
-        await el.removeInsertedCSS(key)
-      } catch {
-        /* ignore */
-      }
-      return
-    }
-    lightsCssKeys.set(tabId, key)
+    await window.workbench?.setGuestDarkMode?.(id, enabled)
   } catch {
-    /* 页面还没 dom-ready，等 dom-ready 再试 */
-  } finally {
-    lightsPending.delete(tabId)
+    /* 页面已经关掉，或调试通道被开发者工具占用 */
   }
 }
 
 function toggleLights() {
   lightsOff.value = !lightsOff.value
   store.update(props.module.id, { lightsOff: lightsOff.value })
-  for (const [tabId, el] of webviewRefs) void applyLights(tabId, el)
+  for (const el of webviewRefs.values()) void applyLights(el)
 }
 
 function attachWebview(tabId: string, el: WebviewEl) {
   if (attachedTabs.has(tabId)) return
   attachedTabs.add(tabId)
 
-  // 每次主文档加载完都重新插一次：insertCSS 不会跨导航保留。
-  // 顺手把旧 key 清掉，避免个别情况下旧样式还活着、叠出两层遮罩。
+  // 每次主文档加载完都重申一次深色设置：页面可能自己重置了媒体查询
   el.addEventListener('dom-ready', () => {
-    const oldKey = lightsCssKeys.get(tabId)
-    lightsCssKeys.delete(tabId)
-    if (!oldKey) {
-      void applyLights(tabId, el)
-      return
-    }
-    void el
-      .removeInsertedCSS(oldKey)
-      .catch(() => undefined)
-      .then(() => applyLights(tabId, el))
+    void applyLights(el)
   })
 
   el.addEventListener('did-start-loading', () => {
@@ -497,7 +454,7 @@ function attachWebview(tabId: string, el: WebviewEl) {
   })
 
   // 已经加载完的页面不会补发 dom-ready，挂载时先补一次
-  void applyLights(tabId, el)
+  void applyLights(el)
 }
 
 function setWebviewRef(tabId: string, el: HTMLElement | null) {
@@ -537,7 +494,6 @@ function closeTab(id: string) {
 
   webviewRefs.delete(id)
   attachedTabs.delete(id)
-  lightsCssKeys.delete(id)
   const nextTabs = tabs.value.filter((t) => t.id !== id)
   tabs.value = nextTabs
 
@@ -694,8 +650,6 @@ onBeforeUnmount(() => {
   offOpenTab?.()
   webviewRefs.clear()
   attachedTabs.clear()
-  lightsCssKeys.clear()
-  lightsPending.clear()
 })
 
 defineExpose({ webviewEl: activeWv })
@@ -898,12 +852,7 @@ defineExpose({ webviewEl: activeWv })
   background: #fff;
 }
 
-/* WebView2 壳走 iframe，拿不到 insertCSS，只能直接压暗 iframe 本身 */
-.wv--lights-off {
-  filter: brightness(0.45) saturate(0.92);
-  transition: filter 180ms var(--ease);
-}
-
+/* WebView2 壳走 iframe，拿不到访客进程，开关灯按钮在那边直接隐藏 */
 .loading-bar {
   position: absolute;
   top: 0;

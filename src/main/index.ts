@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, webContents } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs'
 import { extname, join } from 'path'
 import { pathToFileURL } from 'url'
@@ -498,6 +498,16 @@ function registerIpc(): void {
     }
   )
 
+  ipcMain.handle(
+    'guest:setDarkMode',
+    (event, payload: { webContentsId: number; enabled: boolean }) => {
+      // 只允许应用壳操作自己窗口里的访客页
+      if (!mainWindow || mainWindow.isDestroyed()) return false
+      if (event.sender.id !== mainWindow.webContents.id) return false
+      return setGuestDarkMode(payload.webContentsId, !!payload.enabled)
+    }
+  )
+
   ipcMain.handle('window:isMaximized', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     return win?.isMaximized() ?? false
@@ -629,6 +639,72 @@ function isGuestBrowsing(contents: Electron.WebContents): boolean {
 function notifyGuestOpenTab(url: string): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.webContents.send('guest:open-tab', { url })
+}
+
+/** 由本进程附加过调试器的访客页，收回深色模式时只 detach 自己附加的，别踢掉开发者工具 */
+const darkGuestTargets = new Set<number>()
+
+/**
+ * 开关灯：对站点 webContents 发 CDP 指令，真正改页面主题而不是盖蒙版。
+ * - prefers-color-scheme: dark：让站点自己的深色样式生效
+ * - auto dark mode：站点没写深色样式时由 Chromium 自动压暗背景、提亮文字，图片不动
+ * 指令跟着 target 走，刷新和站内跳转后依旧生效，直到关闭时撤销。
+ */
+async function setGuestDarkMode(id: number, enabled: boolean): Promise<boolean> {
+  const target = webContents.fromId(id)
+  if (!target || target.isDestroyed()) return false
+  if (target.getType() !== 'webview') return false
+  // 只处理主窗口里的访客页，别的窗口 / 内置 devtools 一律拒绝
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  if (target.hostWebContents?.id !== mainWindow.webContents.id) return false
+
+  const dbg = target.debugger
+  // 没开过灯的页面不用碰：既没必要附加调试器，也不该去改别人的调试会话
+  if (!enabled && !darkGuestTargets.has(id)) return true
+
+  let attachedByUs = false
+
+  try {
+    if (!dbg.isAttached()) {
+      dbg.attach('1.3')
+      attachedByUs = true
+    }
+
+    if (enabled) {
+      await dbg.sendCommand('Emulation.setEmulatedMedia', {
+        features: [{ name: 'prefers-color-scheme', value: 'dark' }]
+      })
+      await dbg.sendCommand('Emulation.setAutoDarkModeOverride', { enabled: true })
+      if (attachedByUs) {
+        darkGuestTargets.add(id)
+        target.once('destroyed', () => darkGuestTargets.delete(id))
+      }
+      return true
+    }
+
+    await dbg.sendCommand('Emulation.setAutoDarkModeOverride', { enabled: false })
+    await dbg.sendCommand('Emulation.setEmulatedMedia', { features: [] })
+    return true
+  } catch {
+    // 页面刚被销毁、调试端口被占用，或者开发者工具抢先附加了
+    return false
+  } finally {
+    if (!enabled && darkGuestTargets.has(id)) {
+      darkGuestTargets.delete(id)
+      try {
+        if (dbg.isAttached()) dbg.detach()
+      } catch {
+        /* 已经跟着页面一起没了 */
+      }
+    } else if (attachedByUs && !darkGuestTargets.has(id)) {
+      // 附加成功但后续命令失败：别留下一个没人管的调试会话
+      try {
+        if (dbg.isAttached()) dbg.detach()
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 function isBlankPopupUrl(url: string): boolean {
