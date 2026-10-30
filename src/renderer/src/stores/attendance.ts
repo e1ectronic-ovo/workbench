@@ -6,10 +6,14 @@ const REMINDER_KEY = 'workbench.attendance.reminder'
 const WORK_MINUTES_KEY = 'workbench.attendance.work-minutes'
 /** 旧版本只记整点小时，读不到新键时用它迁移一次 */
 const LEGACY_WORK_HOURS_KEY = 'workbench.attendance.work-hours'
+/** 用户最后一次主动改工时的时刻，只用于排查「设置什么时候被改过」，不参与计算 */
+const WORK_MINUTES_UPDATED_KEY = 'workbench.attendance.work-minutes.updated'
 export const DEFAULT_WORK_MINUTES = 9 * 60
 export const MIN_WORK_MINUTES = 1
 export const MAX_WORK_MINUTES = 24 * 60
 export const REMINDER_BEFORE_MINUTES = 3
+/** 主进程按这个 key 分辨提醒归属（便签用 note:<id>） */
+export const ATTENDANCE_REMINDER_KEY = 'attendance'
 
 export interface DayAttendance {
   clockIn: string
@@ -138,18 +142,29 @@ export function parseWorkDurationInput(hoursInput: string, minutesInput: string)
   return clampWorkMinutes(total)
 }
 
-function loadWorkMinutes(): number {
+/**
+ * 读工时，并说明这份值是从哪来的：
+ *   current  —— 新键里就有，直接用（不写回，避免每次启动都重写一遍）
+ *   legacy   —— 只有旧版的整点小时，折算后需要迁移写回
+ *   fallback —— 什么都没读到（或读失败），只好用默认值，**绝对不要写回**：
+ *               写回等于把用户之前设过的值单程销毁，下次就真读不到了
+ */
+type WorkMinutesSource = 'current' | 'legacy' | 'fallback'
+
+function loadWorkMinutes(): { minutes: number; source: WorkMinutesSource } {
   try {
     const stored = localStorage.getItem(WORK_MINUTES_KEY)
     const parsed = stored ? parseInt(stored, 10) : NaN
-    if (Number.isFinite(parsed)) return clampWorkMinutes(parsed)
+    if (Number.isFinite(parsed)) return { minutes: clampWorkMinutes(parsed), source: 'current' }
     // 旧版本只存了整点小时，这里折算成分钟
     const legacy = localStorage.getItem(LEGACY_WORK_HOURS_KEY)
     const legacyHours = legacy ? parseInt(legacy, 10) : NaN
-    if (Number.isFinite(legacyHours)) return clampWorkMinutes(legacyHours * 60)
-    return DEFAULT_WORK_MINUTES
+    if (Number.isFinite(legacyHours)) {
+      return { minutes: clampWorkMinutes(legacyHours * 60), source: 'legacy' }
+    }
+    return { minutes: DEFAULT_WORK_MINUTES, source: 'fallback' }
   } catch {
-    return DEFAULT_WORK_MINUTES
+    return { minutes: DEFAULT_WORK_MINUTES, source: 'fallback' }
   }
 }
 
@@ -167,6 +182,7 @@ function normalizeWorkMinutesState(value: unknown): number {
 function persistWorkMinutes(minutes: number) {
   try {
     localStorage.setItem(WORK_MINUTES_KEY, String(minutes))
+    localStorage.setItem(WORK_MINUTES_UPDATED_KEY, String(Date.now()))
   } catch {
     /* ignore */
   }
@@ -224,10 +240,14 @@ export function timeInputToDate(time: string, base = new Date()): Date | null {
 export const useAttendanceStore = defineStore('attendance', () => {
   const records = ref<AttendanceMap>(loadRecords())
   const reminder = ref<ReminderSettings>(loadReminder())
-  const workMinutesState = ref(normalizeWorkMinutesState(loadWorkMinutes()))
+  const loadedWorkMinutes = loadWorkMinutes()
+  const workMinutesState = ref(normalizeWorkMinutesState(loadedWorkMinutes.minutes))
   const today = ref(todayKey())
 
-  persistWorkMinutes(workMinutesState.value)
+  // 只有从旧版整点小时折算过来时才落盘一次。
+  // 读不到值时**不写回**：以前这里无条件 persist，一旦某次没读到就把默认 9 小时写死，
+  // 等于把用户自己设的工时单程销毁 —— 表现就是「每次打开都被重置成 9 小时」。
+  if (loadedWorkMinutes.source === 'legacy') persistWorkMinutes(workMinutesState.value)
 
   const workMinutes = computed(() => workMinutesState.value)
 
@@ -331,13 +351,13 @@ export const useAttendanceStore = defineStore('attendance', () => {
     refreshToday()
 
     if (!reminder.value.enabled || !todayRecord.value) {
-      await window.workbench.clearReminder()
+      await window.workbench.clearReminder(ATTENDANCE_REMINDER_KEY)
       return null
     }
 
     const fireAt = reminderFireTime.value
     if (!fireAt) {
-      await window.workbench.clearReminder()
+      await window.workbench.clearReminder(ATTENDANCE_REMINDER_KEY)
       return null
     }
 
@@ -346,14 +366,17 @@ export const useAttendanceStore = defineStore('attendance', () => {
       ? `还有 ${REMINDER_BEFORE_MINUTES} 分钟下班（${formatClockTime(clockOut.toISOString())}）`
       : `还有 ${REMINDER_BEFORE_MINUTES} 分钟下班。`
 
-    return window.workbench.syncReminder({
-      enabled: true,
-      fireAt: fireAt.toISOString(),
-      dateKey: today.value,
-      firedDateKey: reminder.value.firedDateKey,
-      title: 'Workbench 下班提醒',
-      body
-    })
+    return window.workbench.syncReminder(
+      {
+        enabled: true,
+        fireAt: fireAt.toISOString(),
+        dateKey: today.value,
+        firedDateKey: reminder.value.firedDateKey,
+        title: 'Workbench 下班提醒',
+        body
+      },
+      ATTENDANCE_REMINDER_KEY
+    )
   }
 
   return {

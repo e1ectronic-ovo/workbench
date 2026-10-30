@@ -78,7 +78,7 @@
                 placeholder="9"
                 @input="onDurationInput('hours', $event)"
                 @keydown="onDurationKeydown"
-                @blur="normalizeDurationInputs"
+                @blur="onDurationBlur"
               />
               <span class="work-duration__unit">小时</span>
             </div>
@@ -92,11 +92,12 @@
                 placeholder="0"
                 @input="onDurationInput('minutes', $event)"
                 @keydown="onDurationKeydown"
-                @blur="normalizeDurationInputs"
+                @blur="onDurationBlur"
               />
               <span class="work-duration__unit">分钟</span>
             </div>
           </div>
+          <span class="field-note">改完即保存，之后每天的倒计时都按这个时长算</span>
         </label>
 
         <p v-if="editError" class="sheet-warn">{{ editError }}</p>
@@ -142,6 +143,7 @@ import {
   isoToTimeInput,
   MAX_WORK_MINUTES,
   MIN_WORK_MINUTES,
+  parseWorkDurationInput,
   sanitizeDurationInput,
   splitWorkMinutes,
   useAttendanceStore,
@@ -271,6 +273,23 @@ function normalizeDurationInputs() {
   const parts = splitWorkMinutes(Math.min(MAX_WORK_MINUTES, Math.max(0, raw)))
   editHours.value = String(parts.hours)
   editMinutes.value = String(parts.minutes)
+}
+
+/**
+ * 工时是「设置」，不是「今日记录」的一部分，所以改完立刻落盘。
+ *
+ * 以前只有点「保存」才写入，于是「只想调工时、不想打卡」的用户一按取消就白改，
+ * 下次打开还是旧值 —— 这正是「每次都要重新设置工时」的来源。
+ */
+function commitWorkMinutes() {
+  const parsed = parseWorkDurationInput(editHours.value, editMinutes.value)
+  if (parsed === null || parsed === attendance.workMinutes) return
+  attendance.setWorkMinutes(parsed)
+}
+
+function onDurationBlur() {
+  normalizeDurationInputs()
+  commitWorkMinutes()
 }
 
 function closeEdit() {
