@@ -1,24 +1,45 @@
 <template>
   <aside class="sidebar" :class="{ compact: !showLabels }">
-    <nav class="sidebar-body" aria-label="导航">
-      <p v-if="showLabels" class="sidebar-section">通用</p>
-      <button
-        type="button"
-        class="nav-item"
-        :class="{ active: view === 'home' }"
-        @click="$emit('home')"
-      >
-        <span class="nav-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 11.2 12 4.5l8 6.7" />
-            <path d="M7 10.5V19h10v-8.5" />
-          </svg>
-        </span>
-        <span v-if="showLabels" class="nav-label">首页</span>
-      </button>
+    <div class="sidebar-brand" aria-label="鲸汐 Whaletide">
+      <span class="sidebar-brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4.5 18.2c4.2-5 9.2-7.6 14.9-7.6 3.1 0 5.8.7 8.1 2.2" stroke-width="2" />
+          <path d="M5.5 23.6c5.8-3.5 11.8-3.4 18 0" stroke-width="1.6" opacity=".7" />
+          <circle cx="23.7" cy="13.2" r="1.35" fill="currentColor" stroke="none" />
+        </svg>
+      </span>
+      <span v-if="showLabels" class="sidebar-brand__wordmark">
+        <strong>鲸汐</strong>
+        <small>WHALETIDE</small>
+      </span>
+    </div>
+
+    <nav class="sidebar-body" aria-label="主导航">
+      <div class="sidebar-group sidebar-group--primary">
+        <p v-if="showLabels" class="sidebar-section">工作台</p>
+        <button
+          type="button"
+          class="nav-item"
+          :class="{ active: view === 'home' }"
+          :aria-current="view === 'home' ? 'page' : undefined"
+          title="首页"
+          @click="$emit('home')"
+        >
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="6" height="6" rx="1.2" />
+              <rect x="14" y="4" width="6" height="6" rx="1.2" />
+              <rect x="4" y="14" width="6" height="6" rx="1.2" />
+              <path d="M14 17h6M17 14v6" />
+            </svg>
+          </span>
+          <span v-if="showLabels" class="nav-label">首页</span>
+          <span v-if="showLabels" class="nav-meta">Tide Deck</span>
+        </button>
+      </div>
 
       <!-- 内置应用（随客户端发布）与用户添加的网站分开展示，语义不同 -->
-      <template v-for="group in groups" :key="group.key">
+      <div v-for="group in groups" :key="group.key" class="sidebar-group">
         <p v-if="showLabels" class="sidebar-section">{{ group.label }}</p>
 
         <button
@@ -27,10 +48,11 @@
           type="button"
           class="nav-item"
           :class="{ active: view === 'module' && activeId === m.id }"
+          :aria-current="view === 'module' && activeId === m.id ? 'page' : undefined"
           :title="m.name"
           @click="$emit('select', m.id)"
         >
-          <span class="nav-icon module">
+          <span class="nav-icon module" aria-hidden="true">
             <ModuleIcon :module="m" variant="nav" />
           </span>
           <span v-if="showLabels" class="nav-label">{{ m.name }}</span>
@@ -50,24 +72,30 @@
             </svg>
           </span>
         </button>
-      </template>
-
+      </div>
     </nav>
 
     <footer class="sidebar-foot">
       <button
         type="button"
-        class="nav-item"
+        class="nav-item nav-item--settings"
         :class="{ active: view === 'settings' }"
+        :aria-current="view === 'settings' ? 'page' : undefined"
+        title="偏好设置"
         @click="$emit('settings')"
       >
         <span class="nav-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 3.5v2.2M12 18.3V20.5M3.5 12h2.2M18.3 12H20.5" />
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+            <path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h7M15 17h5" />
+            <circle cx="16" cy="7" r="2" />
+            <circle cx="8" cy="12" r="2" />
+            <circle cx="13" cy="17" r="2" />
           </svg>
         </span>
-        <span v-if="showLabels" class="nav-label">设置</span>
+        <span v-if="showLabels" class="nav-copy">
+          <span class="nav-label">偏好设置</span>
+          <small>主题、外观与快捷键</small>
+        </span>
       </button>
     </footer>
   </aside>
@@ -132,47 +160,120 @@ const showLabels = computed(
   border-right: 1px solid var(--border);
 }
 
+.sidebar-brand {
+  min-height: 66px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-brand__mark {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-accent);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, #fff 16%, transparent), transparent 58%),
+    var(--accent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 26%, transparent),
+    0 8px 20px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.sidebar-brand__mark svg {
+  width: 25px;
+  height: 25px;
+}
+
+.sidebar-brand__wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  line-height: 1.1;
+}
+
+.sidebar-brand__wordmark strong {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+
+.sidebar-brand__wordmark small {
+  margin-top: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--text-muted);
+}
+
 .sidebar-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 10px 8px 4px;
+  padding: 10px 9px 8px;
 }
 
-.sidebar-foot {
-  flex: 0 0 auto;
-  margin-top: auto;
-  padding: 6px 8px 10px;
-  border-top: 1px solid var(--border);
-  margin-left: 8px;
-  margin-right: 8px;
+.sidebar-group + .sidebar-group {
+  margin-top: 14px;
 }
 
 .sidebar-section {
-  margin: 8px 8px 4px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 8px 6px;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
   color: var(--text-muted);
 }
 
-.sidebar-section:first-child {
-  margin-top: 0;
+.sidebar-section::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 72%, transparent);
 }
 
 .nav-item {
+  position: relative;
   width: 100%;
-  min-height: 28px;
-  padding: 4px 8px;
-  border-radius: var(--radius-md);
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   color: var(--text);
   text-align: left;
-  transition: background var(--dur-fast) var(--ease);
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.nav-item::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: -1px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
 }
 
 .nav-item:hover {
@@ -180,12 +281,17 @@ const showLabels = computed(
 }
 
 .nav-item.active {
-  background: var(--nav-selected);
+  background: color-mix(in srgb, var(--accent) 11%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.nav-item.active::before {
+  opacity: 1;
 }
 
 .nav-icon {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -195,12 +301,33 @@ const showLabels = computed(
 }
 
 .nav-icon.module {
-  border-radius: 4px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
 .nav-item.active .nav-icon {
-  color: var(--text);
+  color: var(--accent);
+}
+
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-meta {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 550;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  opacity: 0.8;
 }
 
 .nav-audio {
@@ -216,13 +343,41 @@ const showLabels = computed(
   color: var(--text-muted);
 }
 
-.nav-label {
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.2;
+.nav-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nav-copy small {
   overflow: hidden;
+  font-size: 9.5px;
+  line-height: 1.25;
+  color: var(--text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sidebar-foot {
+  flex: 0 0 auto;
+  padding: 8px 9px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.nav-item--settings {
+  min-height: 42px;
+}
+
+.sidebar.compact .sidebar-brand {
+  min-height: 56px;
+  justify-content: center;
+  padding: 10px 8px;
+}
+
+.sidebar.compact .sidebar-brand__mark {
+  width: 32px;
+  height: 32px;
 }
 
 .sidebar.compact .sidebar-body,
@@ -231,18 +386,26 @@ const showLabels = computed(
   padding-right: 6px;
 }
 
-.sidebar.compact .nav-item {
-  justify-content: center;
-  padding: 5px 0;
-  min-height: 32px;
+.sidebar.compact .sidebar-group + .sidebar-group {
+  margin-top: 10px;
 }
 
-.sidebar.compact .sidebar-section {
+.sidebar.compact .nav-item {
+  justify-content: center;
+  padding: 6px 0;
+  min-height: 36px;
+}
+
+.sidebar.compact .nav-item::before {
   display: none;
 }
 
 .sidebar.compact .nav-icon {
-  width: 20px;
-  height: 20px;
+  width: 21px;
+  height: 21px;
+}
+
+.sidebar.compact .nav-item--settings {
+  min-height: 38px;
 }
 </style>

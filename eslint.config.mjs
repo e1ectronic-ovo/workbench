@@ -32,6 +32,7 @@ export default tseslint.config(
       'scripts/**',
       '.agents/**',
       '.workbuddy/**',
+      '.runtime/**',
       '**/*.d.ts',
       // WPF 外壳的构建产物里带着一份 renderer 拷贝，不需要再 lint 一遍
       'desktop/**/bin/**',

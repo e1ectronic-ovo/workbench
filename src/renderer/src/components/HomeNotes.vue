@@ -1,11 +1,17 @@
 <template>
   <div class="home-panel notes">
-    <div class="panel-head">
-      <span class="panel-title">
-        便签
+    <HomeCardHeader title="便签" subtitle="自动保存在本机">
+      <template #icon>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 3.5h12a1.5 1.5 0 0 1 1.5 1.5v9.2L14.7 20H6A1.5 1.5 0 0 1 4.5 18.5v-13A1.5 1.5 0 0 1 6 3.5Z" />
+          <path d="M14.5 20v-5a1 1 0 0 1 1-1h3" />
+          <path d="M7.5 8h9M7.5 11.5h6" />
+        </svg>
+      </template>
+      <template #badge>
         <span v-if="notes.pendingCount" class="panel-count">{{ notes.pendingCount }}</span>
-      </span>
-      <div class="panel-actions">
+      </template>
+      <template #actions>
         <button
           v-if="notes.doneCount"
           type="button"
@@ -24,8 +30,8 @@
         >
           新建
         </button>
-      </div>
-    </div>
+      </template>
+    </HomeCardHeader>
 
     <TransitionGroup
       v-if="notes.notes.length"
@@ -203,6 +209,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import HomeCardHeader from './HomeCardHeader.vue'
 import {
   MAX_NOTES,
   NOTE_COLORS,
@@ -468,8 +475,9 @@ onBeforeUnmount(() => {
 .notes {
   display: flex;
   flex-direction: column;
-  /* 面板跨两行，超出的部分在列表里滚动，别把整个网格撑高 */
-  max-height: calc(var(--home-row-h, 148px) * 2);
+  /* 便签跨两行，内容在列表内滚动，避免把整个网格撑高 */
+  height: 100%;
+  max-height: 100%;
   min-height: 0;
 }
 
@@ -512,7 +520,7 @@ onBeforeUnmount(() => {
 }
 
 .notes-list {
-  margin: 0 -4px 0 0;
+  margin: 1px -4px 0 0;
   padding: 0 4px 0 0;
   list-style: none;
   display: flex;
@@ -709,10 +717,12 @@ onBeforeUnmount(() => {
 
 .notes-empty {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 8px;
-  padding: 4px 0 2px;
+  padding: 4px 0 10px;
 }
 
 .notes-empty__text {

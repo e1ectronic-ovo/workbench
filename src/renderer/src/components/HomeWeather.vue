@@ -1,11 +1,27 @@
 <template>
   <div class="home-panel weather">
-    <div class="panel-head">
-      <span class="panel-title">天气</span>
-      <div class="panel-head__actions">
-        <button type="button" class="link-btn place-btn" @click="openPlace">
-          {{ placeLabel }}
+    <HomeCardHeader title="天气" subtitle="">
+      <template #icon>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="8.5" cy="8" r="2.2" />
+          <path d="M8.5 3.6v1.2M3.8 8H2.6M5.2 4.7l-.8-.8M11.8 4.7l.8-.8" />
+          <path d="M6.7 18.4h9.1a3.5 3.5 0 0 0 .2-6.99A5 5 0 0 0 7.1 9.6a4.25 4.25 0 0 0-.4 8.8Z" />
+        </svg>
+      </template>
+      <template #subtitle>
+        <button
+          type="button"
+          class="place-btn"
+          :title="`切换城市：${placeLabel}`"
+          @click="openPlace"
+        >
+          <span>{{ placeLabel }}</span>
+          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="m9 18 6-6-6-6" />
+          </svg>
         </button>
+      </template>
+      <template #actions>
         <button
           type="button"
           class="link-btn"
@@ -15,8 +31,8 @@
         >
           {{ loading ? '更新中' : '刷新' }}
         </button>
-      </div>
-    </div>
+      </template>
+    </HomeCardHeader>
 
     <div v-if="snapshot" class="weather-now">
       <div class="weather-temp">
@@ -107,6 +123,7 @@ import {
   type WeatherPlace,
   type WeatherSnapshot
 } from '../lib/weather'
+import HomeCardHeader from './HomeCardHeader.vue'
 
 const snapshot = ref<WeatherSnapshot | null>(null)
 const error = ref('')
@@ -244,15 +261,38 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.weather {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .place-btn {
   max-width: 9em;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.place-btn span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.place-btn:hover {
+  color: var(--accent);
+}
+
 .weather-now {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
 }
@@ -315,9 +355,9 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  margin-top: auto;
+  padding-top: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
 }
 
 .weather-day {

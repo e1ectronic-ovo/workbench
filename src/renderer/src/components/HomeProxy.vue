@@ -1,38 +1,51 @@
 <template>
   <div class="home-panel px">
-    <header class="px-head">
-      <span class="px-dot" :class="dotTone" aria-hidden="true"></span>
-      <span class="px-title">网络代理</span>
-      <span class="px-status">{{ proxy.statusText }}</span>
-      <button
-        v-if="canRestart"
-        type="button"
-        class="px-restart"
-        :class="{ 'is-spinning': restarting }"
-        :disabled="restarting || proxy.busy"
-        :title="restarting ? '正在重启内核…' : '重启内核'"
-        aria-label="重启内核"
-        @click="onRestart"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <path d="M21 3v6h-6" />
+    <HomeCardHeader title="网络代理">
+      <template #icon>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="5.5" r="2.2" />
+          <circle cx="5.5" cy="17.5" r="2.2" />
+          <circle cx="18.5" cy="17.5" r="2.2" />
+          <path d="M10.8 7.4 6.7 15.6M13.2 7.4l4.1 8.2M7.7 17.5h8.6" />
         </svg>
-      </button>
-      <button
-        type="button"
-        class="px-switch"
-        role="switch"
-        :aria-checked="proxy.connected"
-        :aria-label="proxy.connected ? '取消接管系统代理' : '接管系统代理'"
-        :class="{ 'is-on': proxy.connected }"
-        :disabled="!canToggle || proxy.busy"
-        :title="proxy.connected ? '取消接管系统代理' : '接管系统代理'"
-        @click="proxy.toggleProxy()"
-      >
-        <span class="px-switch__knob" aria-hidden="true"></span>
-      </button>
-    </header>
+      </template>
+      <template #subtitle>
+        <span class="px-head__status">
+          <span class="px-dot" :class="dotTone" aria-hidden="true"></span>
+          <span>{{ proxy.statusText }}</span>
+        </span>
+      </template>
+      <template #actions>
+        <button
+          v-if="canRestart"
+          type="button"
+          class="px-restart"
+          :class="{ 'is-spinning': restarting }"
+          :disabled="restarting || proxy.busy"
+          :title="restarting ? '正在重启内核…' : '重启内核'"
+          aria-label="重启内核"
+          @click="onRestart"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v6h-6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="px-switch"
+          role="switch"
+          :aria-checked="proxy.connected"
+          :aria-label="proxy.connected ? '取消接管系统代理' : '接管系统代理'"
+          :class="{ 'is-on': proxy.connected }"
+          :disabled="!canToggle || proxy.busy"
+          :title="proxy.connected ? '取消接管系统代理' : '接管系统代理'"
+          @click="proxy.toggleProxy()"
+        >
+          <span class="px-switch__knob" aria-hidden="true"></span>
+        </button>
+      </template>
+    </HomeCardHeader>
 
     <!-- 失败原因与操作反馈：之前只写进状态，卡片上完全看不到 -->
     <p v-if="alertText" class="px-alert" :class="`is-${alertKind}`">{{ alertText }}</p>
@@ -292,6 +305,7 @@ import {
   subscriptionUsed
 } from '../lib/proxy-format'
 import { useProxyStore } from '../stores/proxy'
+import HomeCardHeader from './HomeCardHeader.vue'
 
 const proxy = useProxyStore()
 
@@ -612,7 +626,21 @@ onBeforeUnmount(() => {
   margin-bottom: 10px;
 }
 
+.px-head__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.px-head__status > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .px-dot {
+  display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -711,7 +739,7 @@ onBeforeUnmount(() => {
 
 /* 失败原因 / 操作反馈 */
 .px-alert {
-  margin: -4px 0 8px;
+  margin: 0 0 8px;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
@@ -1016,7 +1044,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-top: 8px;
+  margin-top: auto;
+  padding-top: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 }
 
 .px-modes {

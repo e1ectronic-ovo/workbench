@@ -1,9 +1,17 @@
 <template>
   <div class="home-panel countdown">
-    <div class="panel-head">
-      <span class="panel-title">下班倒计时</span>
-      <span class="panel-date">{{ todayLabel }}</span>
-    </div>
+    <HomeCardHeader title="下班倒计时" :subtitle="todayLabel">
+      <template #icon>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.2" />
+          <path d="M12 7.4V12l3.1 2.1" />
+        </svg>
+      </template>
+      <template #actions>
+        <button type="button" class="link-btn" @click="openHistory">历史</button>
+        <button type="button" class="link-btn" @click="openEdit">编辑</button>
+      </template>
+    </HomeCardHeader>
 
     <template v-if="hasClockIn">
       <div class="countdown-hero" :class="countdownPhase">
@@ -37,10 +45,7 @@
         />
         <span>下班提醒</span>
       </label>
-      <div class="panel-actions">
-        <button type="button" class="link-btn" @click="openHistory">历史</button>
-        <button type="button" class="link-btn" @click="openEdit">编辑</button>
-      </div>
+      <span class="panel-foot__note">本地计时</span>
     </div>
   </div>
 
@@ -135,6 +140,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import AttendanceHistoryCalendar from './AttendanceHistoryCalendar.vue'
+import HomeCardHeader from './HomeCardHeader.vue'
 import {
   DEFAULT_WORK_MINUTES,
   formatClockTime,
@@ -373,6 +379,12 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
 }
 
+.countdown {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .countdown-hero {
   text-align: center;
   padding: 4px 0 6px;
@@ -463,9 +475,15 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  margin-top: auto;
+  padding-top: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.panel-foot__note {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
 }
 
 .panel-actions {
