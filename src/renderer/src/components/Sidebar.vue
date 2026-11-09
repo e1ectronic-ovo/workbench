@@ -2,11 +2,7 @@
   <aside class="sidebar" :class="{ compact: !showLabels }">
     <div class="sidebar-brand" aria-label="鲸汐 Whaletide">
       <span class="sidebar-brand__mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4.5 18.2c4.2-5 9.2-7.6 14.9-7.6 3.1 0 5.8.7 8.1 2.2" stroke-width="2" />
-          <path d="M5.5 23.6c5.8-3.5 11.8-3.4 18 0" stroke-width="1.6" opacity=".7" />
-          <circle cx="23.7" cy="13.2" r="1.35" fill="currentColor" stroke="none" />
-        </svg>
+        <img :src="appIcon" alt="" />
       </span>
       <span v-if="showLabels" class="sidebar-brand__wordmark">
         <strong>鲸汐</strong>
@@ -103,6 +99,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import appIcon from '../../../../resources/icon.png'
 import { isBuiltinModule, type ModuleConfig } from '../modules/registry'
 import { useModulesStore } from '../stores/modules'
 import { useSettingsStore } from '../stores/settings'
@@ -177,19 +174,18 @@ const showLabels = computed(
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--on-accent);
-  border-radius: 10px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, #fff 16%, transparent), transparent 58%),
-    var(--accent);
+  overflow: hidden;
+  border-radius: 9px;
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 26%, transparent),
-    0 8px 20px color-mix(in srgb, var(--accent) 26%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, #fff 10%, transparent),
+    0 8px 20px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-.sidebar-brand__mark svg {
-  width: 25px;
-  height: 25px;
+.sidebar-brand__mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .sidebar-brand__wordmark {
