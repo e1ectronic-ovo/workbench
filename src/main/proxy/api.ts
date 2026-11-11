@@ -67,6 +67,10 @@ export class MihomoClient {
     return this.request<ConnectionsPayload>('/connections')
   }
 
+  async closeConnections(): Promise<void> {
+    await this.request('/connections', { method: 'DELETE' })
+  }
+
   async proxies(): Promise<ProxiesPayload> {
     return this.request<ProxiesPayload>('/proxies')
   }

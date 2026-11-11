@@ -93,6 +93,25 @@
           <small>主题、外观与快捷键</small>
         </span>
       </button>
+
+      <button
+        type="button"
+        class="nav-item nav-item--collapse"
+        :title="collapsed ? '展开侧栏' : '收起侧栏（只留图标）'"
+        :aria-label="collapsed ? '展开侧栏' : '收起侧栏'"
+        :aria-expanded="!collapsed"
+        @click="toggleCollapsed"
+      >
+        <span class="nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2.2" />
+            <path d="M9.5 4v16" />
+            <path v-if="collapsed" d="m13.5 10 2 2-2 2" />
+            <path v-else d="m16 10-2 2 2 2" />
+          </svg>
+        </span>
+        <span v-if="showLabels" class="nav-label">{{ collapsed ? '展开侧栏' : '收起侧栏' }}</span>
+      </button>
     </footer>
   </aside>
 </template>
@@ -144,6 +163,22 @@ const showLabels = computed(
   () =>
     settings.appearance.density !== 'compact' && settings.appearance.showModuleLabels
 )
+
+/** 侧栏是否处于收起态（只剩图标） */
+const collapsed = computed(() => !showLabels.value)
+
+/**
+ * 一键收起 / 展开侧栏。
+ * 收起走「紧凑密度」，展开顺手把标签开关打开——否则用户之前手动关过标签，
+ * 点展开会看起来毫无反应。
+ */
+function toggleCollapsed() {
+  if (collapsed.value) {
+    settings.patchAppearance({ density: 'comfortable', showModuleLabels: true })
+  } else {
+    settings.patchAppearance({ density: 'compact' })
+  }
+}
 </script>
 
 <style scoped>
@@ -365,6 +400,16 @@ const showLabels = computed(
   min-height: 42px;
 }
 
+.nav-item--collapse {
+  min-height: 36px;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.nav-item--collapse:hover {
+  color: var(--text);
+}
+
 .sidebar.compact .sidebar-brand {
   min-height: 56px;
   justify-content: center;
@@ -403,5 +448,9 @@ const showLabels = computed(
 
 .sidebar.compact .nav-item--settings {
   min-height: 38px;
+}
+
+.sidebar.compact .nav-item--collapse {
+  min-height: 34px;
 }
 </style>

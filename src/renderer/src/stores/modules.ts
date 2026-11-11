@@ -23,7 +23,7 @@ export interface ModuleState {
 const MODULES_KEY = 'workbench.modules'
 const STATE_KEY = 'workbench.module-state'
 const MODULE_SEED_KEY = 'workbench.module-seed'
-const MODULE_SEED = 6
+const MODULE_SEED = 7
 
 function applyModuleSeeds(list: ModuleConfig[]): { list: ModuleConfig[]; changed: boolean } {
   const applied = Number(localStorage.getItem(MODULE_SEED_KEY) || '1')
@@ -52,11 +52,11 @@ function applyModuleSeeds(list: ModuleConfig[]): { list: ModuleConfig[]; changed
     }
   }
 
-  // seed 6：新增内置应用「盐线」（saltline），老用户首次升级时补进侧栏
-  if (applied < 6) {
-    const salt = DEFAULT_MODULES.find((d) => d.id === 'saltline')
-    if (salt && !next.some((m) => m.id === salt.id)) {
-      next = [...next, structuredClone(salt)]
+  // seed 7：盐线不再内置，清掉旧版本已经写入侧栏的入口
+  if (applied < 7) {
+    const filtered = next.filter((m) => m.id !== 'saltline')
+    if (filtered.length !== next.length) {
+      next = filtered
       changed = true
     }
   }

@@ -31,8 +31,7 @@ export interface ModuleConfig {
 
 /** 内置应用清单：键对应 resources/apps/<键>/ 目录 */
 export const BUILTIN_APPS = {
-  greyfall: { name: '烬落', glyph: '烬', color: '#8B5CF6', blocksIme: true },
-  saltline: { name: '盐线', glyph: '盐', color: '#FFB347', blocksIme: true }
+  greyfall: { name: '烬落', glyph: '烬', color: '#8B5CF6', blocksIme: true }
 } as const
 
 export type BuiltinAppId = keyof typeof BUILTIN_APPS

@@ -747,8 +747,7 @@ export class ProxyService {
     this.settings = patchSettings({ systemProxy: enabled })
     if (!enabled) {
       this.proxyRequested = false
-      await this.applySystemProxy(false)
-      return { ok: true }
+      return this.applySystemProxy(false)
     }
     if (this.status !== 'running') {
       return { ok: false, error: '先连接内核，再接管系统代理' }
@@ -768,8 +767,7 @@ export class ProxyService {
     this.proxyRequested = want
 
     if (!want) {
-      await this.applySystemProxy(false)
-      return { ok: true }
+      return this.applySystemProxy(false)
     }
 
     // 内核可能只是为了看节点而常驻着，这里补上系统代理即可
@@ -792,6 +790,9 @@ export class ProxyService {
       } else {
         await systemProxy.disable()
         this.systemProxyOn = false
+        // 已建立的连接不会因为 Windows 代理设置变化而自动断开。
+        // 先恢复系统设置，再清掉内核里的长连接，避免 Steam 等应用继续走旧节点。
+        await this.client?.closeConnections()
       }
       this.emit()
       return { ok: true }
